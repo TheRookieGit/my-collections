@@ -252,7 +252,7 @@ $("#btnDelete").addEventListener("click", () => {
 });
 $("#btnAdd").addEventListener("click", () => openEdit(null));
 
-// ---------- 截图识别（Claude Haiku 5.5） ----------
+// ---------- 截图 / 小红书笔记识别（Claude Haiku 5.5） ----------
 const EXTRACT_SCHEMA = {
   type: "object",
   properties: {
@@ -276,14 +276,15 @@ const EXTRACT_SCHEMA = {
   additionalProperties: false,
 };
 
-const EXTRACT_PROMPT = `这是我想收藏的东西的截图。请识别截图里值得收藏的条目（可能有多个），并归入以下分类之一：
+const EXTRACT_PROMPT = `这是我想收藏的东西（截图，或一篇笔记的文字和配图）。请识别其中值得收藏的条目（可能有多个），并归入以下分类之一：
 ${Object.entries(CATS).map(([k, c]) => `- ${k}: ${c.name}（可填字段：${c.fields.map((f) => `${f.key}=${f.label}`).join("，")}）`).join("\n")}
 
 规则：
 - title 用条目本身的名字（书名、片名、店名、商品名、地名、工具名等），保持原语言。
-- 只填截图里能看到或能明确推断的信息，其它字段填空字符串 ""。
-- coupon 的 expiry 用 YYYY-MM-DD 格式；download 填截图里的下载/网盘/磁力链接。
-- note 用一句话中文简述关键信息（如优惠内容、推荐理由、提取码）。
+- 只填能看到或能明确推断的信息，其它字段填空字符串 ""。
+- coupon 的 expiry 用 YYYY-MM-DD 格式；download 填下载/网盘/磁力链接。
+- note 用一两句中文简述关键信息（如优惠内容、推荐理由、地址、营业时间、提取码），配图里的文字也要看。
+- 笔记标题往往只是噱头（如"这片太绝了"），title 要用正文/配图里真正的名字。
 - 识别不出任何条目时返回空数组。`;
 
 let shotResults = [];
@@ -299,8 +300,18 @@ async function imageToBase64(file, maxSide = 1568) {
   return { dataUrl, data: dataUrl.split(",")[1] };
 }
 
-async function recognize(files) {
-  if (!files.length) return;
+const MAX_NOTE_IMAGES = 9;
+
+// 小红书图片有防盗链：带外站 Referer 会 403，不带则允许跨域读取
+async function fetchImage(url) {
+  const res = await fetch(url, { referrerPolicy: "no-referrer" });
+  if (!res.ok) throw new Error(`图片下载失败 ${res.status}`);
+  return res.blob();
+}
+
+// files：本地截图；imageUrls：笔记配图；text：笔记文字；link：识别结果没给链接时用它
+async function recognize({ files = [], imageUrls = [], text = "", link = "" }) {
+  if (!files.length && !imageUrls.length && !text) return;
   if (!cfg.apiKey && cfg.syncPass) await sync();
   if (!cfg.apiKey) {
     toast(cfg.syncPass ? "云端还没有 API Key，请在设置里填写" : "在设置里填同步密码即可自动获取 API Key（或直接填 API Key）");
@@ -311,13 +322,16 @@ async function recognize(files) {
   shotResults = [];
   $("#shotResults").innerHTML = "";
   $("#btnShotSave").disabled = true;
-  $("#shotState").textContent = "正在用 Claude Haiku 5.5 识别…";
+  $("#shotState").textContent = imageUrls.length ? `正在下载 ${imageUrls.length} 张配图…` : "正在用 Claude Haiku 5.5 识别…";
   $("#shotPreview").innerHTML = "";
   if (!dlg.open) dlg.showModal();
 
   try {
-    const images = await Promise.all(files.map((f) => imageToBase64(f)));
-    $("#shotPreview").innerHTML = images.map((im) => `<img src="${im.dataUrl}" alt="截图">`).join("");
+    // 单张配图下载失败（如链接过期）不影响其它内容
+    const remote = await Promise.all(imageUrls.map((u) => fetchImage(u).catch((e) => (console.warn(u, e), null))));
+    const images = await Promise.all([...files, ...remote.filter(Boolean)].map((f) => imageToBase64(f)));
+    $("#shotPreview").innerHTML = images.map((im) => `<img src="${im.dataUrl}" alt="图片">`).join("");
+    $("#shotState").textContent = "正在用 Claude Haiku 5.5 识别…";
 
     const client = new Anthropic({ apiKey: cfg.apiKey, dangerouslyAllowBrowser: true });
     const response = await client.messages.create({
@@ -328,6 +342,7 @@ async function recognize(files) {
         role: "user",
         content: [
           ...images.map((im) => ({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: im.data } })),
+          ...(text ? [{ type: "text", text: `<note>\n${text}\n</note>` }] : []),
           { type: "text", text: EXTRACT_PROMPT },
         ],
       }],
@@ -335,8 +350,8 @@ async function recognize(files) {
 
     if (response.stop_reason === "refusal") throw new Error("模型拒绝了这次请求" + (response.stop_details?.explanation ? "：" + response.stop_details.explanation : ""));
     if (response.stop_reason === "max_tokens") throw new Error("输出被截断，请减少截图数量再试");
-    const text = response.content.filter((b) => b.type === "text").map((b) => b.text).join("");
-    const parsed = JSON.parse(text);
+    const out = response.content.filter((b) => b.type === "text").map((b) => b.text).join("");
+    const parsed = JSON.parse(out);
 
     const ts = now();
     shotResults = (parsed.items || []).filter((r) => r.title?.trim()).map((r) => ({
@@ -344,7 +359,7 @@ async function recognize(files) {
       category: CATS[r.category] ? r.category : "novel",
       title: r.title.trim(),
       note: r.note || "",
-      link: r.link || "",
+      link: r.link || link,
       rating: 3,
       createdAt: ts,
       done: false,
@@ -360,6 +375,42 @@ async function recognize(files) {
     $("#shotState").textContent = "识别失败：" + msg;
   }
 }
+
+// 解析快捷指令传来的内容：小红书分享文字 + 从笔记网页里匹配出的 "title/desc" 和 "url" 片段
+const XHS_LINK = /https?:\/\/(?:xhslink\.(?:cn|com)|(?:www\.)?xiaohongshu\.com)\/[^\s"，。]+/;
+const JSON_STR = String.raw`"(?:[^"\\]|\\.)*"`;
+const jsonStr = (q) => { try { return JSON.parse(q); } catch { return ""; } };
+
+function parseShare(raw) {
+  const link = raw.match(XHS_LINK)?.[0] || "";
+  const noteM = raw.match(new RegExp(`"title":(${JSON_STR}),"desc":(${JSON_STR})`));
+
+  // 同一张图有多种尺寸，按文件 id 去重，优先 1080 版
+  const byId = new Map();
+  for (const m of raw.matchAll(new RegExp(`"url":(${JSON_STR})`, "g"))) {
+    const u = jsonStr(m[1]).replace(/^http:/, "https:");
+    if (!/xhscdn\.com\//.test(u)) continue;
+    const id = u.split("/").pop().split("!")[0];
+    if (!byId.has(id) || /!h5_1080/.test(u)) byId.set(id, u);
+  }
+  const imageUrls = [...byId.values()].slice(0, MAX_NOTE_IMAGES);
+
+  // 没匹配到笔记内容时，退回到分享文字本身
+  const text = noteM
+    ? `标题：${jsonStr(noteM[1])}\n正文：${jsonStr(noteM[2])}`
+    : raw.split(/"(?:title|url)":/)[0].trim();
+  return { text, imageUrls, link };
+}
+
+function handleShareHash() {
+  const m = location.hash.match(/^#add=([\s\S]*)$/);
+  if (!m) return;
+  history.replaceState(null, "", location.pathname + location.search);
+  let raw;
+  try { raw = decodeURIComponent(m[1]); } catch { raw = m[1]; }
+  if (raw.trim()) recognize(parseShare(raw));
+}
+window.addEventListener("hashchange", handleShareHash);
 
 function renderShotResults() {
   $("#shotResults").innerHTML = shotResults.map((r, idx) => `
@@ -411,13 +462,16 @@ $("#btnShotSave").addEventListener("click", () => {
 
 $("#btnShot").addEventListener("click", () => $("#shotInput").click());
 $("#shotInput").addEventListener("change", (e) => {
-  recognize([...e.target.files]);
+  recognize({ files: [...e.target.files] });
   e.target.value = "";
 });
 document.addEventListener("paste", (e) => {
   if (document.querySelector("dialog[open]:not(#dlgShot)")) return;
   const files = [...(e.clipboardData?.files || [])].filter((f) => f.type.startsWith("image/"));
-  if (files.length) { e.preventDefault(); recognize(files); }
+  if (files.length) { e.preventDefault(); recognize({ files }); return; }
+  // 在页面空白处粘贴小红书分享文字（浏览器里拿不到正文，只能按分享文字识别）
+  const text = e.clipboardData?.getData("text") || "";
+  if (!e.target.closest?.("input, textarea") && XHS_LINK.test(text)) { e.preventDefault(); recognize(parseShare(text)); }
 });
 
 // ---------- 设置 ----------
@@ -499,7 +553,7 @@ async function syncConfig() {
   }
 }
 
-let syncing = false, syncAgain = false, syncTimer;
+let syncing = null, syncAgain = false, syncTimer;
 function setSyncStatus(s) { $("#syncStatus").textContent = s; }
 function scheduleSync() {
   if (!cfg.syncPass) return;
@@ -508,14 +562,22 @@ function scheduleSync() {
   syncTimer = setTimeout(() => sync(), 1500);
 }
 
-async function sync(manual = false) {
+// 返回本轮同步的 Promise；正在同步时返回进行中的那一轮
+function sync(manual = false) {
+  if (syncing) { syncAgain = true; return syncing; }
+  syncing = doSync(manual).finally(() => {
+    syncing = null;
+    if (syncAgain) { syncAgain = false; sync(); }
+  });
+  return syncing;
+}
+
+async function doSync(manual) {
   if (!cfg.syncPass) {
     setSyncStatus("");
     if (manual) toast("请先填写同步密码");
     return;
   }
-  if (syncing) { syncAgain = true; return; }
-  syncing = true;
   setSyncStatus("⟳ 同步中…");
   try {
     // 云端还没建 mc_config 相关函数时（PGRST202）跳过设置同步，不影响收藏同步
@@ -539,9 +601,6 @@ async function sync(manual = false) {
     console.error(err);
     setSyncStatus("⚠ 同步失败");
     toast(err?.code === "28P01" ? "同步密码错误" : "同步失败：" + (err.message || err));
-  } finally {
-    syncing = false;
-    if (syncAgain) { syncAgain = false; sync(); }
   }
 }
 
@@ -549,3 +608,4 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 
 render();
 sync();
+handleShareHash();
