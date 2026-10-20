@@ -529,12 +529,14 @@ async function recognizeXhs(shareText) {
 const LS_SEEN = "mc.xhsSeen.v1";
 let clipBusy = false;
 
-function offerXhs(text) {
+// manual：用户主动点了按钮，同一链接也照样弹（识别失败时要能重来）；
+// 自动检测（切回页面时）则每个链接只提示一次，否则每次切回来都会弹
+function offerXhs(text, manual = false) {
   const link = text.match(XHS_LINK)?.[0];
   if (!link) return false;
   const seen = lsGet(LS_SEEN, []);
-  if (seen.includes(link) || live().some((i) => i.link === link)) return false;
-  lsSet(LS_SEEN, [link, ...seen].slice(0, 100)); // 每个链接只提示一次
+  if (!manual && seen.includes(link)) return false;
+  lsSet(LS_SEEN, [link, ...seen.filter((l) => l !== link)].slice(0, 100));
   $("#clipText").textContent = text.split(link)[0].trim() || link;
   $("#dlgClip").dataset.text = text;
   $("#dlgClip").showModal();
@@ -547,7 +549,7 @@ async function checkClipboard(fromTap = false) {
   try {
     const text = await navigator.clipboard.readText();
     $("#btnClip").hidden = true;
-    if (!offerXhs(text) && fromTap) toast("剪贴板里没有新的小红书链接");
+    if (!offerXhs(text, fromTap) && fromTap) toast("剪贴板里没有小红书链接");
   } catch {
     // 没有权限（如 iOS 未点击时）：显示按钮，点一下再读
     $("#btnClip").hidden = false;
