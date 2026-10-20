@@ -1,4 +1,10 @@
 import Anthropic from "https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.128.0/+esm";
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/+esm";
+
+// Supabase 公开配置（publishable key 本来就是公开的；表对外关闭，只能凭同步密码通过函数读写，见 supabase/schema.sql）
+const SUPABASE_URL = "https://lxicymhrzkuiqisuiotg.supabase.co";
+const SUPABASE_KEY = "sb_publishable_KsJzV--VCz5k8WYQ-aqMLQ_rMgf-w9y";
+const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 
 // ---------- 分类定义 ----------
 const DOWNLOAD = { key: "download", label: "下载地址", type: "url" };
@@ -26,7 +32,7 @@ function lsSet(key, val) {
 }
 
 let items = lsGet(LS_DATA, []);
-let cfg = lsGet(LS_CFG, { apiKey: "", ghToken: "", ghRepo: "", ghPath: "collections.json" });
+let cfg = lsGet(LS_CFG, { apiKey: "", syncPass: "" });
 const ui = { cat: "all", status: "todo", q: "", sort: "created-desc" };
 
 function save() {
@@ -417,18 +423,11 @@ document.addEventListener("paste", (e) => {
 const sform = $("#settingsForm");
 function openSettings() {
   sform.apiKey.value = cfg.apiKey || "";
-  sform.ghToken.value = cfg.ghToken || "";
-  sform.ghRepo.value = cfg.ghRepo || "";
-  sform.ghPath.value = cfg.ghPath || "collections.json";
+  sform.syncPass.value = cfg.syncPass || "";
   $("#dlgSettings").showModal();
 }
 function readSettingsForm() {
-  cfg = {
-    apiKey: sform.apiKey.value.trim(),
-    ghToken: sform.ghToken.value.trim(),
-    ghRepo: sform.ghRepo.value.trim().replace(/^https:\/\/github\.com\//, "").replace(/\/$/, ""),
-    ghPath: sform.ghPath.value.trim() || "collections.json",
-  };
+  cfg = { ...cfg, apiKey: sform.apiKey.value.trim(), syncPass: sform.syncPass.value };
   lsSet(LS_CFG, cfg);
 }
 $("#btnSettings").addEventListener("click", openSettings);
@@ -460,7 +459,7 @@ $("#importInput").addEventListener("change", async (e) => {
   }
 });
 
-// ---------- GitHub 同步 ----------
+// ---------- Supabase 同步 ----------
 function mergeItems(a, b) {
   const map = new Map();
   for (const i of [...a, ...b]) {
@@ -469,82 +468,51 @@ function mergeItems(a, b) {
   }
   return [...map.values()];
 }
-const b64encode = (str) => {
-  const bytes = new TextEncoder().encode(str);
-  let bin = "";
-  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  return btoa(bin);
-};
-const b64decode = (b64) => new TextDecoder().decode(Uint8Array.from(atob(b64.replace(/\s/g, "")), (c) => c.charCodeAt(0)));
 
-function ghFetch(method, body) {
-  const path = cfg.ghPath.split("/").map(encodeURIComponent).join("/");
-  return fetch(`https://api.github.com/repos/${cfg.ghRepo}/contents/${path}`, {
-    method,
-    cache: "no-store",
-    headers: {
-      Authorization: `Bearer ${cfg.ghToken}`,
-      Accept: "application/vnd.github+json",
-      "X-GitHub-Api-Version": "2022-11-28",
-      ...(body ? { "Content-Type": "application/json" } : {}),
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+async function pullAll() {
+  const { data, error } = await sb.rpc("mc_pull", { p_pass: cfg.syncPass });
+  if (error) throw error;
+  return data || [];
 }
 
 let syncing = false, syncAgain = false, syncTimer;
 function setSyncStatus(s) { $("#syncStatus").textContent = s; }
 function scheduleSync() {
-  if (!cfg.ghToken || !cfg.ghRepo) return;
+  if (!cfg.syncPass) return;
   clearTimeout(syncTimer);
   setSyncStatus("● 待同步");
   syncTimer = setTimeout(() => sync(), 1500);
 }
 
 async function sync(manual = false) {
-  if (!cfg.ghToken || !cfg.ghRepo) {
+  if (!cfg.syncPass) {
     setSyncStatus("");
-    if (manual) toast("请先填写 GitHub Token 和仓库");
+    if (manual) toast("请先填写同步密码");
     return;
   }
   if (syncing) { syncAgain = true; return; }
   syncing = true;
   setSyncStatus("⟳ 同步中…");
   try {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const res = await ghFetch("GET");
-      let sha, remote = [];
-      if (res.ok) {
-        const j = await res.json();
-        sha = j.sha;
-        remote = JSON.parse(b64decode(j.content || "") || "{}").items || [];
-      } else if (res.status !== 404) {
-        throw new Error(`读取失败 ${res.status}`);
-      }
-      const merged = mergeItems(items, remote);
-      const changedLocal = JSON.stringify(merged) !== JSON.stringify(items);
+    const remote = await pullAll();
+    const remoteAt = new Map(remote.map((r) => [r.id, r.updatedAt || ""]));
+    const merged = mergeItems(items, remote);
+    if (JSON.stringify(merged) !== JSON.stringify(items)) {
       items = merged;
       lsSet(LS_DATA, items);
-      if (changedLocal) render();
-
-      const canon = (arr) => JSON.stringify([...arr].sort((x, y) => (x.id < y.id ? -1 : 1)));
-      if (sha && canon(mergeItems([], remote)) === canon(merged)) break; // 远端已是最新
-
-      const put = await ghFetch("PUT", {
-        message: `sync ${new Date().toISOString()}`,
-        content: b64encode(JSON.stringify({ version: 1, items: merged }, null, 1)),
-        ...(sha ? { sha } : {}),
-      });
-      if (put.ok) break;
-      if (put.status === 409 || put.status === 422) continue; // 有冲突，重新拉取合并
-      throw new Error(`写入失败 ${put.status}`);
+      render();
+    }
+    const dirty = items.filter((i) => !remoteAt.has(i.id) || (i.updatedAt || "") > remoteAt.get(i.id));
+    for (let k = 0; k < dirty.length; k += 500) {
+      const { error } = await sb.rpc("mc_push", { p_pass: cfg.syncPass, p_items: dirty.slice(k, k + 500) });
+      if (error) throw error;
     }
     setSyncStatus("✓ 已同步 " + fmtTime(now()).slice(11));
     if (manual) toast("同步完成");
   } catch (err) {
     console.error(err);
     setSyncStatus("⚠ 同步失败");
-    toast("GitHub 同步失败：" + err.message);
+    toast(err?.code === "28P01" ? "同步密码错误" : "同步失败：" + (err.message || err));
   } finally {
     syncing = false;
     if (syncAgain) { syncAgain = false; sync(); }

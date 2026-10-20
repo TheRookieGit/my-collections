@@ -15,13 +15,14 @@
 ## 数据与隐私
 本仓库是公开的（为了 GitHub Pages），**仓库里不存任何个人数据**。
 - 数据默认存在浏览器 localStorage
-- API Key / GitHub Token 只保存在你自己浏览器的 localStorage
-- 可选：在设置中配置 GitHub 同步，把数据存到一个**私有仓库**的 JSON 文件里，实现多设备同步
+- Anthropic API Key 只保存在你自己浏览器的 localStorage
+- 同步密码同样只保存在本机浏览器
+- 可选：云同步（Supabase）。数据表对外完全关闭，只能凭同步密码通过数据库函数读写，实现多设备同步
 
-### 配置 GitHub 同步
-1. 新建私有仓库，如 `my-collections-data`
-2. 创建 [Fine-grained token](https://github.com/settings/personal-access-tokens/new)：只选该仓库，权限 Contents: Read and write
-3. 网站设置里填 Token、`TheRookieGit/my-collections-data`、`collections.json`
+### 配置 Supabase
+1. SQL Editor 里运行 [supabase/schema.sql](supabase/schema.sql)
+2. 再单独运行文件末尾那句设置同步密码的 SQL（填你自己的密码，不要提交到仓库）
+3. 网站设置里填同步密码
 
 ### 截图识别
 在设置里填 [Anthropic API Key](https://console.anthropic.com/settings/keys)。请求从浏览器直接发往 Anthropic API。

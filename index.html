@@ -91,7 +91,7 @@
   <dialog id="dlgSettings">
     <form id="settingsForm" method="dialog">
       <h2>设置</h2>
-      <p class="muted">以下信息只保存在当前浏览器的 localStorage，不会写进公开仓库。</p>
+      <p class="muted">API Key 和同步密码只保存在当前浏览器的 localStorage，不会写进公开仓库。</p>
       <fieldset>
         <legend>Claude API（截图识别）</legend>
         <label>Anthropic API Key
@@ -99,16 +99,10 @@
         </label>
       </fieldset>
       <fieldset>
-        <legend>GitHub 同步（可选，多设备共享数据）</legend>
-        <p class="muted small">数据会存成一个 JSON 文件。建议放在一个<b>私有</b>仓库里（如 <code>my-collections-data</code>），Token 只需该仓库的 Contents 读写权限。</p>
-        <label>Token
-          <input name="ghToken" type="password" placeholder="github_pat_..." autocomplete="off">
-        </label>
-        <label>仓库（owner/repo）
-          <input name="ghRepo" placeholder="TheRookieGit/my-collections-data">
-        </label>
-        <label>文件路径
-          <input name="ghPath" placeholder="collections.json">
+        <legend>云同步（可选，多设备共享数据）</legend>
+        <p class="muted small">填你在 Supabase 里设置的同步密码，每台设备填一次即可。</p>
+        <label>同步密码
+          <input name="syncPass" type="password" autocomplete="off">
         </label>
         <button type="button" id="btnSyncNow" class="ghost">立即同步</button>
       </fieldset>
