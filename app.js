@@ -385,13 +385,14 @@ function parseShare(raw) {
   const link = raw.match(XHS_LINK)?.[0] || "";
   const noteM = raw.match(new RegExp(`"title":(${JSON_STR}),"desc":(${JSON_STR})`));
 
-  // 同一张图有多种尺寸，按文件 id 去重，优先 1080 版
+  // 同一张图有多种版本，按文件 id 去重；prv 是高压缩预览图，图里的字会糊，优先用 1080 / dft 版
+  const rank = (u) => (/!h5_1080/.test(u) ? 3 : /_dft_/.test(u) ? 2 : /_prv_/.test(u) ? 0 : 1);
   const byId = new Map();
   for (const m of raw.matchAll(new RegExp(`"url":(${JSON_STR})`, "g"))) {
     const u = jsonStr(m[1]).replace(/^http:/, "https:");
     if (!/xhscdn\.com\//.test(u)) continue;
     const id = u.split("/").pop().split("!")[0];
-    if (!byId.has(id) || /!h5_1080/.test(u)) byId.set(id, u);
+    if (!byId.has(id) || rank(u) > rank(byId.get(id))) byId.set(id, u);
   }
   const imageUrls = [...byId.values()].slice(0, MAX_NOTE_IMAGES);
 
