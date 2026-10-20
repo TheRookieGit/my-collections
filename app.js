@@ -303,7 +303,7 @@ async function recognize(files) {
   if (!files.length) return;
   if (!cfg.apiKey && cfg.syncPass) await sync();
   if (!cfg.apiKey) {
-    toast("请先在设置里填写 Anthropic API Key");
+    toast(cfg.syncPass ? "云端还没有 API Key，请在设置里填写" : "在设置里填同步密码即可自动获取 API Key（或直接填 API Key）");
     openSettings();
     return;
   }
