@@ -301,6 +301,7 @@ async function imageToBase64(file, maxSide = 1568) {
 
 async function recognize(files) {
   if (!files.length) return;
+  if (!cfg.apiKey && cfg.syncPass) await sync();
   if (!cfg.apiKey) {
     toast("请先在设置里填写 Anthropic API Key");
     openSettings();
@@ -427,7 +428,9 @@ function openSettings() {
   $("#dlgSettings").showModal();
 }
 function readSettingsForm() {
-  cfg = { ...cfg, apiKey: sform.apiKey.value.trim(), syncPass: sform.syncPass.value };
+  const apiKey = sform.apiKey.value.trim();
+  // API Key 改动后标记待上传，下次同步时推到云端，其它设备会自动拿到
+  cfg = { ...cfg, apiKey, syncPass: sform.syncPass.value, apiKeyDirty: cfg.apiKeyDirty || apiKey !== cfg.apiKey };
   lsSet(LS_CFG, cfg);
 }
 $("#btnSettings").addEventListener("click", openSettings);
@@ -475,6 +478,27 @@ async function pullAll() {
   return data || [];
 }
 
+// 跨设备共享的设置：目前只有 Anthropic API Key
+async function syncConfig() {
+  if (cfg.apiKeyDirty) {
+    const { error } = await sb.rpc("mc_set_config", { p_pass: cfg.syncPass, p_data: { apiKey: cfg.apiKey } });
+    if (error) throw error;
+    cfg.apiKeyDirty = false;
+    lsSet(LS_CFG, cfg);
+    return;
+  }
+  const { data, error } = await sb.rpc("mc_get_config", { p_pass: cfg.syncPass });
+  if (error) throw error;
+  if (data?.apiKey && data.apiKey !== cfg.apiKey) {
+    cfg.apiKey = data.apiKey;
+    lsSet(LS_CFG, cfg);
+    if (!$("#dlgSettings").open) sform.apiKey.value = cfg.apiKey;
+  } else if (!data?.apiKey && cfg.apiKey) {
+    cfg.apiKeyDirty = true;
+    return syncConfig();
+  }
+}
+
 let syncing = false, syncAgain = false, syncTimer;
 function setSyncStatus(s) { $("#syncStatus").textContent = s; }
 function scheduleSync() {
@@ -494,6 +518,8 @@ async function sync(manual = false) {
   syncing = true;
   setSyncStatus("⟳ 同步中…");
   try {
+    // 云端还没建 mc_config 相关函数时（PGRST202）跳过设置同步，不影响收藏同步
+    await syncConfig().catch((e) => { if (e?.code !== "PGRST202") throw e; console.warn("跳过设置同步：", e.message); });
     const remote = await pullAll();
     const remoteAt = new Map(remote.map((r) => [r.id, r.updatedAt || ""]));
     const merged = mergeItems(items, remote);

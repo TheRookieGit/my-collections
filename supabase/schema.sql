@@ -54,7 +54,35 @@ begin
     where excluded.updated_at > public.items.updated_at;
 end $$;
 
+-- 跨设备共享的设置（如 Anthropic API Key），只有一行
+create table if not exists public.mc_config (
+  id   int   primary key default 1 check (id = 1),
+  data jsonb not null default '{}'::jsonb
+);
+alter table public.mc_config enable row level security;
+revoke all on public.mc_config from anon, authenticated;
+
+create or replace function public.mc_get_config(p_pass text)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+begin
+  perform public.mc_check(p_pass);
+  return coalesce((select c.data from public.mc_config c where c.id = 1), '{}'::jsonb);
+end $$;
+
+-- 合并写入：只覆盖传入的字段
+create or replace function public.mc_set_config(p_pass text, p_data jsonb)
+returns void language plpgsql security definer set search_path = '' as $$
+begin
+  perform public.mc_check(p_pass);
+  insert into public.mc_config (id, data) values (1, p_data)
+  on conflict (id) do update set data = public.mc_config.data || excluded.data;
+end $$;
+
 revoke execute on function public.mc_check(text)       from public, anon, authenticated;
+revoke execute on function public.mc_get_config(text)         from public;
+revoke execute on function public.mc_set_config(text, jsonb)  from public;
+grant  execute on function public.mc_get_config(text)         to anon, authenticated;
+grant  execute on function public.mc_set_config(text, jsonb)  to anon, authenticated;
 revoke execute on function public.mc_pull(text)        from public;
 revoke execute on function public.mc_push(text, jsonb) from public;
 grant  execute on function public.mc_pull(text)        to anon, authenticated;
