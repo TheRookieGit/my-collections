@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>我的收藏夹</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⭐</text></svg>">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>⭐ 我的收藏夹</h1>
+    <div class="top-actions">
+      <span id="syncStatus" class="sync-status" title="同步状态"></span>
+      <button id="btnSettings" class="ghost" title="设置">⚙️</button>
+    </div>
+  </header>
+
+  <nav id="catTabs" class="cat-tabs"></nav>
+
+  <section class="toolbar">
+    <div class="seg" id="statusSeg">
+      <button data-status="todo" class="active">待实现 <b id="cntTodo">0</b></button>
+      <button data-status="done">已实现 <b id="cntDone">0</b></button>
+    </div>
+    <input id="search" type="search" placeholder="搜索标题 / 备注…">
+    <select id="sort">
+      <option value="created-desc">最新收藏</option>
+      <option value="created-asc">最早收藏</option>
+      <option value="rating-desc">等级高→低</option>
+      <option value="rating-asc">等级低→高</option>
+    </select>
+  </section>
+
+  <main id="list" class="list"></main>
+
+  <div class="fab-group">
+    <button id="btnShot" class="fab secondary" title="截图识别">📷 截图识别</button>
+    <button id="btnAdd" class="fab" title="手动添加">＋ 添加</button>
+  </div>
+  <input id="shotInput" type="file" accept="image/*" multiple hidden>
+
+  <!-- 编辑 / 新增 -->
+  <dialog id="dlgEdit">
+    <form id="editForm" method="dialog">
+      <h2 id="editTitle">添加收藏</h2>
+      <label>分类
+        <select name="category" id="fCategory"></select>
+      </label>
+      <label>标题 *
+        <input name="title" required>
+      </label>
+      <div id="extraFields"></div>
+      <label>链接
+        <input name="link" type="url" placeholder="https://">
+      </label>
+      <label>备注
+        <textarea name="note" rows="3"></textarea>
+      </label>
+      <label>收藏等级
+        <div class="stars-input" id="fRating"></div>
+      </label>
+      <label>收藏时间
+        <input name="createdAt" type="datetime-local">
+      </label>
+      <div class="dlg-actions">
+        <button type="button" id="btnDelete" class="danger" hidden>删除</button>
+        <span class="spacer"></span>
+        <button type="button" value="cancel" class="ghost" data-close>取消</button>
+        <button type="submit" value="ok" class="primary">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- 截图识别结果 -->
+  <dialog id="dlgShot">
+    <div class="dlg-body">
+      <h2>截图识别</h2>
+      <div id="shotPreview" class="shot-preview"></div>
+      <div id="shotState" class="muted"></div>
+      <div id="shotResults"></div>
+      <div class="dlg-actions">
+        <span class="spacer"></span>
+        <button type="button" class="ghost" data-close>关闭</button>
+        <button type="button" id="btnShotSave" class="primary" disabled>保存选中</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- 设置 -->
+  <dialog id="dlgSettings">
+    <form id="settingsForm" method="dialog">
+      <h2>设置</h2>
+      <p class="muted">以下信息只保存在当前浏览器的 localStorage，不会写进公开仓库。</p>
+      <fieldset>
+        <legend>Claude API（截图识别）</legend>
+        <label>Anthropic API Key
+          <input name="apiKey" type="password" placeholder="sk-ant-..." autocomplete="off">
+        </label>
+      </fieldset>
+      <fieldset>
+        <legend>GitHub 同步（可选，多设备共享数据）</legend>
+        <p class="muted small">数据会存成一个 JSON 文件。建议放在一个<b>私有</b>仓库里（如 <code>my-collections-data</code>），Token 只需该仓库的 Contents 读写权限。</p>
+        <label>Token
+          <input name="ghToken" type="password" placeholder="github_pat_..." autocomplete="off">
+        </label>
+        <label>仓库（owner/repo）
+          <input name="ghRepo" placeholder="TheRookieGit/my-collections-data">
+        </label>
+        <label>文件路径
+          <input name="ghPath" placeholder="collections.json">
+        </label>
+        <button type="button" id="btnSyncNow" class="ghost">立即同步</button>
+      </fieldset>
+      <fieldset>
+        <legend>备份</legend>
+        <div class="row">
+          <button type="button" id="btnExport" class="ghost">导出 JSON</button>
+          <button type="button" id="btnImport" class="ghost">导入 JSON</button>
+          <input id="importInput" type="file" accept="application/json" hidden>
+        </div>
+      </fieldset>
+      <div class="dlg-actions">
+        <span class="spacer"></span>
+        <button type="button" class="ghost" data-close>取消</button>
+        <button type="submit" class="primary">保存设置</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast"></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
