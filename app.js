@@ -389,14 +389,17 @@ async function fetchImage(url) {
 }
 
 // files：本地截图；imageUrls：笔记配图；text：笔记文字；link：识别结果没给链接时用它
+async function ensureApiKey() {
+  if (!cfg.apiKey && cfg.syncPass) await sync();
+  if (cfg.apiKey) return true;
+  toast(cfg.syncPass ? "云端还没有 API Key，请在设置里填写" : "在设置里填同步密码即可自动获取 API Key（或直接填 API Key）");
+  openSettings();
+  return false;
+}
+
 async function recognize({ files = [], imageUrls = [], text = "", link = "" }) {
   if (!files.length && !imageUrls.length && !text) return;
-  if (!cfg.apiKey && cfg.syncPass) await sync();
-  if (!cfg.apiKey) {
-    toast(cfg.syncPass ? "云端还没有 API Key，请在设置里填写" : "在设置里填同步密码即可自动获取 API Key（或直接填 API Key）");
-    openSettings();
-    return;
-  }
+  if (!(await ensureApiKey())) return;
   const dlg = $("#dlgShot");
   shotResults = [];
   pendingShots = [];
@@ -497,6 +500,66 @@ function handleShareHash() {
 }
 window.addEventListener("hashchange", handleShareHash);
 
+// 网页跨域读不到小红书，由 Supabase 云函数 xhs-note 代读笔记正文和配图地址
+async function recognizeXhs(shareText) {
+  if (!(await ensureApiKey())) return;
+  let raw = "";
+  if (cfg.syncPass) {
+    $("#shotResults").innerHTML = "";
+    $("#shotPreview").innerHTML = "";
+    $("#btnShotSave").disabled = true;
+    $("#shotState").textContent = "正在读取小红书笔记…";
+    if (!$("#dlgShot").open) $("#dlgShot").showModal();
+    const link = shareText.match(XHS_LINK)?.[0];
+    const { data, error } = await sb.functions.invoke("xhs-note", { body: { url: link, pass: cfg.syncPass } });
+    if (error || data?.error || !data?.found) {
+      console.warn("xhs-note", error || data);
+      toast("没读到笔记正文，只按分享文字识别");
+    } else raw = data.raw;
+  }
+  recognize(parseShare(raw ? `${shareText}\n${raw}` : shareText));
+}
+
+// ---------- 剪贴板里的小红书链接 ----------
+// 电脑 Chrome 授权后可在回到页面时自动读取；iOS Safari 只允许点击后读取，所以读不到时显示一个按钮
+const LS_SEEN = "mc.xhsSeen.v1";
+let clipBusy = false;
+
+function offerXhs(text) {
+  const link = text.match(XHS_LINK)?.[0];
+  if (!link) return false;
+  const seen = lsGet(LS_SEEN, []);
+  if (seen.includes(link) || live().some((i) => i.link === link)) return false;
+  lsSet(LS_SEEN, [link, ...seen].slice(0, 100)); // 每个链接只提示一次
+  $("#clipText").textContent = text.split(link)[0].trim() || link;
+  $("#dlgClip").dataset.text = text;
+  $("#dlgClip").showModal();
+  return true;
+}
+
+async function checkClipboard(fromTap = false) {
+  if (clipBusy || !navigator.clipboard?.readText || document.querySelector("dialog[open]")) return;
+  clipBusy = true;
+  try {
+    const text = await navigator.clipboard.readText();
+    $("#btnClip").hidden = true;
+    if (!offerXhs(text) && fromTap) toast("剪贴板里没有新的小红书链接");
+  } catch {
+    // 没有权限（如 iOS 未点击时）：显示按钮，点一下再读
+    $("#btnClip").hidden = false;
+  } finally {
+    clipBusy = false;
+  }
+}
+
+$("#btnClip").addEventListener("click", () => checkClipboard(true));
+$("#btnClipGo").addEventListener("click", () => {
+  $("#dlgClip").close();
+  recognizeXhs($("#dlgClip").dataset.text || "");
+});
+window.addEventListener("focus", () => checkClipboard());
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") checkClipboard(); });
+
 function renderShotResults() {
   $("#shotResults").innerHTML = shotResults.map((r, idx) => `
     <div class="shot-item" data-idx="${idx}">
@@ -558,9 +621,9 @@ document.addEventListener("paste", (e) => {
   if (document.querySelector("dialog[open]:not(#dlgShot)")) return;
   const files = [...(e.clipboardData?.files || [])].filter((f) => f.type.startsWith("image/"));
   if (files.length) { e.preventDefault(); recognize({ files }); return; }
-  // 在页面空白处粘贴小红书分享文字（浏览器里拿不到正文，只能按分享文字识别）
+  // 在页面空白处粘贴小红书分享文字
   const text = e.clipboardData?.getData("text") || "";
-  if (!e.target.closest?.("input, textarea") && XHS_LINK.test(text)) { e.preventDefault(); recognize(parseShare(text)); }
+  if (!e.target.closest?.("input, textarea") && XHS_LINK.test(text)) { e.preventDefault(); recognizeXhs(text); }
 });
 
 // ---------- 设置 ----------
@@ -700,3 +763,4 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 render();
 sync();
 handleShareHash();
+checkClipboard();

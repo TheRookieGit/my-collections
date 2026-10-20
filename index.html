@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>我的收藏夹</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⭐</text></svg>">
-  <link rel="stylesheet" href="style.css?v=7">
+  <link rel="stylesheet" href="style.css?v=8">
 </head>
 <body>
   <header class="topbar">
@@ -35,6 +35,7 @@
   <main id="list" class="list"></main>
 
   <div class="fab-group">
+    <button id="btnClip" class="fab secondary" hidden title="读取剪贴板里的小红书链接">📋 粘贴链接</button>
     <button id="btnShot" class="fab secondary" title="截图识别">📷 截图识别</button>
     <button id="btnAdd" class="fab" title="手动添加">＋ 添加</button>
   </div>
@@ -83,6 +84,20 @@
         <span class="spacer"></span>
         <button type="button" class="ghost" data-close>关闭</button>
         <button type="button" id="btnShotSave" class="primary" disabled>保存选中</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- 剪贴板检测到小红书链接 -->
+  <dialog id="dlgClip">
+    <div class="dlg-body">
+      <h2>📕 检测到小红书链接</h2>
+      <div id="clipText" class="clip-text"></div>
+      <p class="muted small">要收藏吗？会读取笔记正文和配图，用 Claude 自动解析。</p>
+      <div class="dlg-actions">
+        <span class="spacer"></span>
+        <button type="button" class="ghost" data-close>忽略</button>
+        <button type="button" id="btnClipGo" class="primary">收藏并解析</button>
       </div>
     </div>
   </dialog>
@@ -136,6 +151,6 @@
 
   <div id="toast" class="toast"></div>
 
-  <script type="module" src="app.js?v=7"></script>
+  <script type="module" src="app.js?v=8"></script>
 </body>
 </html>
