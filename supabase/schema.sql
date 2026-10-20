@@ -10,6 +10,21 @@ create table if not exists public.items (
   updated_at timestamptz not null default now()
 );
 
+-- 迁移：早期版本的 items 用 (user_id, id) 作主键，改成只用 id
+drop policy if exists "items_select_own" on public.items;
+drop policy if exists "items_insert_own" on public.items;
+drop policy if exists "items_update_own" on public.items;
+drop policy if exists "items_delete_own" on public.items;
+do $$
+begin
+  if exists (select 1 from information_schema.columns
+             where table_schema = 'public' and table_name = 'items' and column_name = 'user_id') then
+    alter table public.items drop constraint if exists items_pkey;
+    alter table public.items drop column user_id;
+    alter table public.items add primary key (id);
+  end if;
+end $$;
+
 -- 同步密码（只存 bcrypt 哈希，只有一行）
 create table if not exists public.mc_secret (
   id   int  primary key default 1 check (id = 1),
