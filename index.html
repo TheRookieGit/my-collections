@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>我的收藏夹</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⭐</text></svg>">
-  <link rel="stylesheet" href="style.css?v=6">
+  <link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
   <header class="topbar">
@@ -87,6 +87,18 @@
     </div>
   </dialog>
 
+  <!-- 原截图查看 -->
+  <dialog id="dlgImg">
+    <div class="dlg-body">
+      <h2>原截图</h2>
+      <div id="imgView" class="img-view"></div>
+      <div class="dlg-actions">
+        <span class="spacer"></span>
+        <button type="button" class="ghost" data-close>关闭</button>
+      </div>
+    </div>
+  </dialog>
+
   <!-- 设置 -->
   <dialog id="dlgSettings">
     <form id="settingsForm" method="dialog">
@@ -124,6 +136,6 @@
 
   <div id="toast" class="toast"></div>
 
-  <script type="module" src="app.js?v=6"></script>
+  <script type="module" src="app.js?v=7"></script>
 </body>
 </html>

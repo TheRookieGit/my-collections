@@ -131,7 +131,7 @@ function cardHtml(i) {
       <span class="badge">${c.icon} ${c.name}</span>
     </div>
     <div class="stars" data-act="rate" title="点击修改等级">${[1, 2, 3, 4, 5].map((n) => `<span data-n="${n}">${n <= (i.rating || 0) ? "★" : "☆"}</span>`).join("")}</div>
-    ${extras}${link}${note}
+    ${extras}${link}${note}${i.shots?.length ? `<div class="meta"><button data-act="shots" class="link-btn">🖼 原截图${i.shots.length > 1 ? ` ×${i.shots.length}` : ""}</button></div>` : ""}
     <div class="card-foot">
       <span class="time">收藏于 ${fmtTime(i.createdAt)}${i.done ? `<br>实现于 ${fmtTime(i.doneAt)}` : ""}</span>
       <button data-act="edit" class="ghost">编辑</button>
@@ -172,6 +172,7 @@ $("#list").addEventListener("click", (e) => {
   }
   const act = e.target.closest("[data-act]")?.dataset.act;
   if (act === "edit") openEdit(item);
+  if (act === "shots") openShots(item);
   if (act === "done") {
     const done = !item.done;
     upsert({ ...item, done, doneAt: done ? now() : null });
@@ -288,16 +289,94 @@ ${Object.entries(CATS).map(([k, c]) => `- ${k}: ${c.name}（可填字段：${c.f
 - 识别不出任何条目时返回空数组。`;
 
 let shotResults = [];
+let pendingShots = []; // 本次识别的原截图，点「保存选中」后才落盘
 
-async function imageToBase64(file, maxSide = 1568) {
+async function imageToBase64(file, maxSide = 1568, quality = 0.88) {
   const bmp = await createImageBitmap(file);
   const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(bmp.width * scale);
   canvas.height = Math.round(bmp.height * scale);
   canvas.getContext("2d").drawImage(bmp, 0, 0, canvas.width, canvas.height);
-  const dataUrl = canvas.toDataURL("image/jpeg", 0.88);
+  const dataUrl = canvas.toDataURL("image/jpeg", quality);
   return { dataUrl, data: dataUrl.split(",")[1] };
+}
+
+// ---------- 原截图存储 ----------
+// 本机存 IndexedDB（localStorage 放不下图片）；开了云同步再上传到 mc_images，其它设备点开时按需下载
+const shotDb = (() => {
+  let dbp;
+  const open = () => (dbp ||= new Promise((resolve, reject) => {
+    const req = indexedDB.open("mc-shots", 1);
+    req.onupgradeneeded = () => {
+      req.result.createObjectStore("images", { keyPath: "id" });
+      req.result.createObjectStore("pending", { keyPath: "id" }); // 待上传的图片 id
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  }));
+  const run = async (store, mode, fn) => {
+    const db = await open();
+    return new Promise((resolve, reject) => {
+      const t = db.transaction(store, mode);
+      const req = fn(t.objectStore(store));
+      t.oncomplete = () => resolve(req?.result);
+      t.onerror = () => reject(t.error);
+    });
+  };
+  return {
+    get: (id) => run("images", "readonly", (s) => s.get(id)),
+    put: (rec) => run("images", "readwrite", (s) => s.put(rec)),
+    pending: () => run("pending", "readonly", (s) => s.getAllKeys()),
+    addPending: (id) => run("pending", "readwrite", (s) => s.put({ id })),
+    donePending: (id) => run("pending", "readwrite", (s) => s.delete(id)),
+  };
+})();
+
+// 存档用的原图：比识别用的再压一点，一张手机截图大约 100–200KB
+const ARCHIVE_SIDE = 1600, ARCHIVE_QUALITY = 0.72;
+
+async function storeShots(shots) {
+  for (const s of shots) {
+    await shotDb.put(s);
+    await shotDb.addPending(s.id);
+  }
+}
+
+async function uploadPendingShots() {
+  for (const id of await shotDb.pending()) {
+    const rec = await shotDb.get(id);
+    if (rec) {
+      const { error } = await sb.rpc("mc_put_image", { p_pass: cfg.syncPass, p_id: id, p_data: rec.data });
+      if (error) throw error;
+    }
+    await shotDb.donePending(id);
+  }
+}
+
+async function loadShot(id) {
+  const local = await shotDb.get(id).catch(() => null);
+  if (local) return local.data;
+  if (!cfg.syncPass) return null;
+  const { data, error } = await sb.rpc("mc_get_image", { p_pass: cfg.syncPass, p_id: id });
+  if (error) throw error;
+  if (data) shotDb.put({ id, data }).catch(() => {});
+  return data;
+}
+
+async function openShots(item) {
+  const box = $("#imgView");
+  box.innerHTML = `<div class="muted">加载中…</div>`;
+  $("#dlgImg").showModal();
+  const html = await Promise.all(item.shots.map(async (id) => {
+    try {
+      const src = await loadShot(id);
+      return src ? `<img src="${src}" alt="原截图">` : `<div class="muted small">这张图还没上传到云端（在原设备上打开网站同步一下）</div>`;
+    } catch (err) {
+      return `<div class="muted small">加载失败：${esc(err.message || err)}</div>`;
+    }
+  }));
+  box.innerHTML = html.join("");
 }
 
 const MAX_NOTE_IMAGES = 9;
@@ -320,6 +399,7 @@ async function recognize({ files = [], imageUrls = [], text = "", link = "" }) {
   }
   const dlg = $("#dlgShot");
   shotResults = [];
+  pendingShots = [];
   $("#shotResults").innerHTML = "";
   $("#btnShotSave").disabled = true;
   $("#shotState").textContent = imageUrls.length ? `正在下载 ${imageUrls.length} 张配图…` : "正在用 Claude Haiku 5.5 识别…";
@@ -330,6 +410,8 @@ async function recognize({ files = [], imageUrls = [], text = "", link = "" }) {
     // 单张配图下载失败（如链接过期）不影响其它内容
     const remote = await Promise.all(imageUrls.map((u) => fetchImage(u).catch((e) => (console.warn(u, e), null))));
     const images = await Promise.all([...files, ...remote.filter(Boolean)].map((f) => imageToBase64(f)));
+    // 用户上传的截图另存一份压缩版，保存收藏时一起存下来
+    const shots = await Promise.all(files.map(async (f) => ({ id: uid(), data: (await imageToBase64(f, ARCHIVE_SIDE, ARCHIVE_QUALITY)).dataUrl })));
     $("#shotPreview").innerHTML = images.map((im) => `<img src="${im.dataUrl}" alt="图片">`).join("");
     $("#shotState").textContent = "正在用 Claude Haiku 5.5 识别…";
 
@@ -365,8 +447,10 @@ async function recognize({ files = [], imageUrls = [], text = "", link = "" }) {
       done: false,
       doneAt: null,
       extra: Object.fromEntries(EXTRA_KEYS.filter((k) => r[k]).map((k) => [k, r[k]])),
+      ...(shots.length ? { shots: shots.map((s) => s.id) } : {}),
       _checked: true,
     }));
+    pendingShots = shots;
     $("#shotState").textContent = shotResults.length ? `识别到 ${shotResults.length} 条，确认/修改后保存：` : "没有识别到可收藏的条目，可以手动添加。";
     renderShotResults();
   } catch (err) {
@@ -449,9 +533,13 @@ $("#shotResults").addEventListener("click", (e) => {
   r.rating = r.rating === +b.dataset.rate ? +b.dataset.rate - 1 : +b.dataset.rate;
   renderShotResults();
 });
-$("#btnShotSave").addEventListener("click", () => {
+$("#btnShotSave").addEventListener("click", async () => {
   const picked = shotResults.filter((r) => r._checked && r.title.trim());
   const ts = now();
+  if (picked.some((r) => r.shots) && pendingShots.length) {
+    try { await storeShots(pendingShots); } catch (err) { toast("原截图保存失败：" + err.message); }
+  }
+  pendingShots = [];
   for (const { _checked, ...r } of picked) {
     r.extra = Object.fromEntries(Object.entries(r.extra).filter(([, v]) => v && v.trim()));
     items.push({ ...r, updatedAt: ts });
@@ -596,6 +684,8 @@ async function doSync(manual) {
       const { error } = await sb.rpc("mc_push", { p_pass: cfg.syncPass, p_items: dirty.slice(k, k + 500) });
       if (error) throw error;
     }
+    // 云端还没建 mc_put_image 时（PGRST202）先留在本机，下次再传
+    await uploadPendingShots().catch((e) => { if (e?.code !== "PGRST202") throw e; console.warn("跳过原图上传：", e.message); });
     setSyncStatus("✓ 已同步 " + fmtTime(now()).slice(11));
     if (manual) toast("同步完成");
   } catch (err) {

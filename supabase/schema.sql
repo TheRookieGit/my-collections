@@ -93,6 +93,34 @@ begin
   on conflict (id) do update set data = public.mc_config.data || excluded.data;
 end $$;
 
+-- 截图原图（压缩后的 JPEG data URL），收藏条目里只存图片 id
+create table if not exists public.mc_images (
+  id         text        primary key,
+  data       text        not null,
+  created_at timestamptz not null default now()
+);
+alter table public.mc_images enable row level security;
+revoke all on public.mc_images from anon, authenticated;
+
+create or replace function public.mc_put_image(p_pass text, p_id text, p_data text)
+returns void language plpgsql security definer set search_path = '' as $$
+begin
+  perform public.mc_check(p_pass);
+  insert into public.mc_images (id, data) values (p_id, p_data) on conflict (id) do nothing;
+end $$;
+
+create or replace function public.mc_get_image(p_pass text, p_id text)
+returns text language plpgsql security definer set search_path = '' as $$
+begin
+  perform public.mc_check(p_pass);
+  return (select i.data from public.mc_images i where i.id = p_id);
+end $$;
+
+revoke execute on function public.mc_put_image(text, text, text) from public;
+revoke execute on function public.mc_get_image(text, text)       from public;
+grant  execute on function public.mc_put_image(text, text, text) to anon, authenticated;
+grant  execute on function public.mc_get_image(text, text)       to anon, authenticated;
+
 revoke execute on function public.mc_check(text)       from public, anon, authenticated;
 revoke execute on function public.mc_get_config(text)         from public;
 revoke execute on function public.mc_set_config(text, jsonb)  from public;
