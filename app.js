@@ -514,7 +514,11 @@ async function recognizeXhs(shareText) {
     const { data, error } = await sb.functions.invoke("xhs-note", { body: { url: link, pass: cfg.syncPass } });
     if (error || data?.error || !data?.found) {
       console.warn("xhs-note", error || data);
-      toast("没读到笔记正文，只按分享文字识别");
+      const status = error?.context?.status;
+      const why = status === 404 ? "云函数 xhs-note 还没部署"
+        : status === 401 ? (await error.context.json().catch(() => ({}))).error || "云函数拒绝访问（检查是否关闭了 Verify JWT）"
+        : data?.error || (data && !data.found ? "小红书没返回正文（可能要求登录）" : error?.message || "未知错误");
+      toast(`没读到笔记正文（${why}），只按分享文字识别`);
     } else raw = data.raw;
   }
   recognize(parseShare(raw ? `${shareText}\n${raw}` : shareText));
