@@ -7,11 +7,12 @@ const SUPABASE_KEY = "sb_publishable_KsJzV--VCz5k8WYQ-aqMLQ_rMgf-w9y";
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 
 // ---------- 分类定义 ----------
-const DOWNLOAD = { key: "download", label: "下载地址", type: "url" };
+// fulfiller：哪个应用会自动回报「已拥有」；links：可以记下载链接，送到那个应用去下载
 const CATS = {
-  novel:      { name: "小说",     icon: "📚", fields: [{ key: "author", label: "作者" }, DOWNLOAD] },
-  movie:      { name: "电影",     icon: "🎬", fields: [{ key: "year", label: "年份" }, DOWNLOAD] },
-  tv:         { name: "电视剧",   icon: "📺", fields: [{ key: "year", label: "年份" }, DOWNLOAD] },
+  novel:      { name: "小说",     icon: "📚", fields: [{ key: "author", label: "作者" }], fulfiller: "shuyu", links: true },
+  movie:      { name: "电影",     icon: "🎬", fields: [{ key: "year", label: "年份" }], fulfiller: "plexus", links: true },
+  tv:         { name: "电视剧",   icon: "📺", fields: [{ key: "year", label: "年份" }], fulfiller: "plexus", links: true },
+  game:       { name: "游戏",     icon: "🎮", fields: [], fulfiller: "steamless" },
   coupon:     { name: "Coupon",   icon: "🎟️", fields: [{ key: "store", label: "商家" }, { key: "code", label: "券码" }, { key: "expiry", label: "到期日", type: "date" }] },
   restaurant: { name: "餐厅",     icon: "🍜", fields: [{ key: "cuisine", label: "菜系" }, { key: "address", label: "地址" }] },
   tool:       { name: "工具",     icon: "🧰", fields: [{ key: "platform", label: "平台" }] },
@@ -19,10 +20,40 @@ const CATS = {
   grocery:    { name: "超市购物", icon: "🛒", fields: [{ key: "store", label: "超市" }, { key: "quantity", label: "数量" }] },
 };
 const EXTRA_KEYS = [...new Set(Object.values(CATS).flatMap((c) => c.fields.map((f) => f.key)))];
+// 小说的类型，和书屿想看清单的一样：按书名、文件夹名还是压缩包名去匹配
+const KINDS = { novel: "小说文件", folder: "文件夹", zip: "ZIP 压缩包" };
+// 送去下载：网盘链接放在 #links= 里，书屿 Lite 和 Plexus 的下载页会预先填好
+const APPS = {
+  shuyu:     { name: "书屿",      send: "https://therookiegit.github.io/shuyu/lite/" },
+  plexus:    { name: "Plexus",    send: "https://therookiegit.github.io/plexus/downloads.html" },
+  steamless: { name: "Steamless" },
+};
+// 默认隐藏「已实现」按钮的分类：小说下载到书屿就算数了
+const HIDE_DONE = { novel: true };
+
+// 条目的新字段：aliases 别名、externalIds（steamAppId / plexGuid / tmdb）、links 下载链接、kind、source（screenshot / xhs / manual / steamless）。
+// 旧数据在读进来时补齐，不改 updatedAt：别的设备上的旧版页面照样能读写，云端的条目下次编辑时才换成新格式。
+function normalize(i) {
+  if (!i || typeof i !== "object") return i;
+  const out = { ...i };
+  const links = Array.isArray(out.links) ? out.links.filter(Boolean) : [];
+  if (out.extra?.download) {
+    const { download, ...rest } = out.extra;
+    out.extra = rest;
+    if (!links.includes(download)) links.unshift(download);
+  }
+  out.links = links;
+  if (!Array.isArray(out.aliases)) out.aliases = [];
+  if (!out.externalIds || typeof out.externalIds !== "object") out.externalIds = {};
+  return out;
+}
+// 游戏心愿以 Steamless 为准：它同步过来的条目在这里只能看
+const readOnly = (i) => i.source === "steamless";
 
 // ---------- 存储 ----------
 const LS_DATA = "mc.items.v1";
 const LS_CFG = "mc.config.v1";
+const LS_FULFILL = "mc.fulfill.v1";
 
 function lsGet(key, fallback) {
   try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; }
@@ -31,9 +62,16 @@ function lsSet(key, val) {
   try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) { toast("本地保存失败：" + e.message); }
 }
 
-let items = lsGet(LS_DATA, []);
+let items = lsGet(LS_DATA, []).map(normalize);
 let cfg = lsGet(LS_CFG, { apiKey: "", syncPass: "" });
+// 各应用回报的「已拥有」（mc_fulfill），和收藏分开存：收藏按 updatedAt 整条覆盖，写在一起会互相冲掉
+let fulfill = lsGet(LS_FULFILL, []);
 const ui = { cat: "all", status: "todo", q: "", sort: "created-desc" };
+
+const doneHidden = (cat) => !!(cfg.hideDone ?? HIDE_DONE)[cat];
+const ownedRows = (i) => fulfill.filter((f) => f.itemId === i.id && f.ownedAt && !f.rejected);
+// 三档：想要 → 已拥有（应用自动回报）→ 已实现（手动点）
+const stateOf = (i) => (i.done ? "done" : ownedRows(i).length ? "owned" : "todo");
 
 function save() {
   lsSet(LS_DATA, items);
@@ -81,8 +119,9 @@ document.querySelectorAll("dialog [data-close]").forEach((b) => b.addEventListen
 // ---------- 渲染 ----------
 function renderTabs() {
   const counts = {};
-  for (const i of live()) if (!i.done) counts[i.category] = (counts[i.category] || 0) + 1;
-  const total = live().filter((i) => !i.done).length;
+  const wanted = live().filter((i) => stateOf(i) === "todo");
+  for (const i of wanted) counts[i.category] = (counts[i.category] || 0) + 1;
+  const total = wanted.length;
   const tabs = [["all", "全部", "✨", total], ...Object.entries(CATS).map(([k, c]) => [k, c.name, c.icon, counts[k] || 0])];
   $("#catTabs").innerHTML = tabs
     .map(([k, n, ic, c]) => `<button data-cat="${k}" class="${ui.cat === k ? "active" : ""}">${ic} ${n}<small>${c || ""}</small></button>`)
@@ -91,12 +130,11 @@ function renderTabs() {
 
 function renderList() {
   const inCat = live().filter((i) => ui.cat === "all" || i.category === ui.cat);
-  $("#cntTodo").textContent = inCat.filter((i) => !i.done).length;
-  $("#cntDone").textContent = inCat.filter((i) => i.done).length;
+  for (const s of ["todo", "owned", "done"]) $(`#cnt-${s}`).textContent = inCat.filter((i) => stateOf(i) === s).length;
 
   const q = ui.q.trim().toLowerCase();
-  let list = inCat.filter((i) => (ui.status === "done" ? i.done : !i.done));
-  if (q) list = list.filter((i) => [i.title, i.note, ...Object.values(i.extra || {})].join(" ").toLowerCase().includes(q));
+  let list = inCat.filter((i) => stateOf(i) === ui.status);
+  if (q) list = list.filter((i) => [i.title, i.note, ...i.aliases, ...Object.values(i.extra || {})].join(" ").toLowerCase().includes(q));
 
   const [field, dir] = ui.sort.split("-");
   const key = field === "rating" ? (i) => i.rating || 0 : (i) => (ui.status === "done" && field === "created" ? i.doneAt : i.createdAt) || "";
@@ -106,7 +144,9 @@ function renderList() {
   });
 
   if (!list.length) {
-    $("#list").innerHTML = `<div class="empty">${ui.status === "done" ? "还没有已实现的收藏" : "这里空空的，点右下角添加一个吧～<br><span class='small'>也可以直接 Ctrl+V 粘贴截图</span>"}</div>`;
+    $("#list").innerHTML = `<div class="empty">${ui.status === "done" ? "还没有已实现的收藏"
+      : ui.status === "owned" ? "还没有已拥有的收藏<br><span class='small'>书屿、Plexus、Steamless 配对后，下载到的会自动出现在这里</span>"
+      : "这里空空的，点右下角添加一个吧～<br><span class='small'>也可以直接 Ctrl+V 粘贴截图</span>"}</div>`;
     return;
   }
   $("#list").innerHTML = list.map(cardHtml).join("");
@@ -118,24 +158,36 @@ function cardHtml(i) {
     .filter((f) => i.extra?.[f.key])
     .map((f) => {
       const v = i.extra[f.key];
-      const val = isUrl(v) ? `<a href="${esc(v)}" target="_blank" rel="noopener">${f.key === "download" ? "⬇️ 下载" : esc(v)}</a>` : esc(v);
+      const val = isUrl(v) ? `<a href="${esc(v)}" target="_blank" rel="noopener">${esc(v)}</a>` : esc(v);
       return `<div class="meta">${f.label}：${val}</div>`;
     })
     .join("");
+  const kind = i.category === "novel" && KINDS[i.kind] && i.kind !== "novel" ? `<div class="meta">类型：${KINDS[i.kind]}</div>` : "";
+  const aliases = i.aliases.length ? `<div class="meta">别名：${i.aliases.map(esc).join("、")}</div>` : "";
+  const downloads = i.links.length ? `<div class="meta">下载：${i.links.map((l) => (isUrl(l) ? `<a href="${esc(l)}" target="_blank" rel="noopener">⬇️ 链接</a>` : esc(l))).join(" ")}</div>` : "";
   const link = i.link ? `<div class="meta">🔗 <a href="${esc(i.link)}" target="_blank" rel="noopener">${esc(i.link)}</a></div>` : "";
   const note = i.note ? `<div class="meta">${esc(i.note)}</div>` : "";
+  const owned = ownedRows(i).map((f) => `
+    <div class="owned">✅ 已拥有 · ${esc(APPS[f.app]?.name || f.app)}${f.title ? `：${esc(f.title)}` : ""} · ${fmtTime(f.ownedAt).slice(0, 10)}
+      ${isUrl(f.url) ? `<a href="${esc(f.url)}" target="_blank" rel="noopener">查看</a>` : ""}
+      ${readOnly(i) ? "" : `<button data-act="reject" data-app="${esc(f.app)}" class="link-btn" title="匹配错了：${esc(APPS[f.app]?.name || f.app)}以后不再把它算作这条心愿">不是这个</button>`}</div>`).join("");
+  const app = APPS[c.fulfiller];
+  const send = app?.send && i.links.length && !i.done && !owned
+    ? `<a class="send" href="${app.send}#links=${encodeURIComponent(i.links.join("\n"))}" target="_blank" rel="noopener">⬇️ 送到${app.name}下载</a>` : "";
+  const ro = readOnly(i);
   return `
-  <article class="card ${i.done ? "done" : ""}" data-id="${i.id}">
+  <article class="card ${stateOf(i)}" data-id="${i.id}">
     <div class="card-head">
       <div class="card-title">${esc(i.title)}</div>
       <span class="badge">${c.icon} ${c.name}</span>
     </div>
-    <div class="stars" data-act="rate" title="点击修改等级">${[1, 2, 3, 4, 5].map((n) => `<span data-n="${n}">${n <= (i.rating || 0) ? "★" : "☆"}</span>`).join("")}</div>
-    ${extras}${link}${note}${i.shots?.length ? `<div class="meta"><button data-act="shots" class="link-btn">🖼 原截图${i.shots.length > 1 ? ` ×${i.shots.length}` : ""}</button></div>` : ""}
+    <div class="stars" ${ro ? "" : 'data-act="rate" title="点击修改等级"'}>${[1, 2, 3, 4, 5].map((n) => `<span ${ro ? "" : `data-n="${n}"`}>${n <= (i.rating || 0) ? "★" : "☆"}</span>`).join("")}</div>
+    ${extras}${kind}${aliases}${downloads}${link}${note}${i.shots?.length ? `<div class="meta"><button data-act="shots" class="link-btn">🖼 原截图${i.shots.length > 1 ? ` ×${i.shots.length}` : ""}</button></div>` : ""}
+    ${owned}${send}
     <div class="card-foot">
       <span class="time">收藏于 ${fmtTime(i.createdAt)}${i.done ? `<br>实现于 ${fmtTime(i.doneAt)}` : ""}</span>
-      <button data-act="edit" class="ghost">编辑</button>
-      <button data-act="done" class="btn-done ${i.done ? "is-done" : ""}">${i.done ? "↩ 撤回" : "✓ 已实现"}</button>
+      ${ro ? `<span class="muted small">来自 Steamless</span>` : `<button data-act="edit" class="ghost">编辑</button>`}
+      ${ro || (doneHidden(i.category) && !i.done) ? "" : `<button data-act="done" class="btn-done ${i.done ? "is-done" : ""}">${i.done ? "↩ 撤回" : "✓ 已实现"}</button>`}
     </div>
   </article>`;
 }
@@ -170,9 +222,11 @@ $("#list").addEventListener("click", (e) => {
     upsert({ ...item, rating: item.rating === n ? n - 1 : n });
     return;
   }
-  const act = e.target.closest("[data-act]")?.dataset.act;
+  const actor = e.target.closest("[data-act]");
+  const act = actor?.dataset.act;
   if (act === "edit") openEdit(item);
   if (act === "shots") openShots(item);
+  if (act === "reject") rejectFulfill(item, actor.dataset.app);
   if (act === "done") {
     const done = !item.done;
     upsert({ ...item, done, doneAt: done ? now() : null });
@@ -186,12 +240,18 @@ let editing = null;
 let editRating = 3;
 
 $("#fCategory").innerHTML = Object.entries(CATS).map(([k, c]) => `<option value="${k}">${c.icon} ${c.name}</option>`).join("");
+$("#fKind").innerHTML = Object.entries(KINDS).map(([k, n]) => `<option value="${k}">${n}</option>`).join("");
 
 function renderExtraFields(cat, extra = {}) {
   $("#extraFields").innerHTML = (CATS[cat]?.fields || [])
-    .map((f) => `<label>${f.label}<input name="x_${f.key}" type="${f.type === "date" ? "date" : "text"}" value="${esc(extra[f.key] || "")}" ${f.type === "url" ? 'placeholder="网盘 / 磁力 / 网址"' : ""}></label>`)
+    .map((f) => `<label>${f.label}<input name="x_${f.key}" type="${f.type === "date" ? "date" : "text"}" value="${esc(extra[f.key] || "")}"></label>`)
     .join("");
+  // 类型只有小说有；下载链接和别名给会自动匹配的分类，别名能帮应用认出译名、原名
+  $("#fKindRow").hidden = cat !== "novel";
+  $("#fLinksRow").hidden = !CATS[cat]?.links;
+  $("#fAliasesRow").hidden = !CATS[cat]?.fulfiller;
 }
+const splitList = (s, sep) => [...new Set(s.split(sep).map((x) => x.trim()).filter(Boolean))];
 function renderStarInput() {
   $("#fRating").innerHTML = [1, 2, 3, 4, 5].map((n) => `<button type="button" data-n="${n}" class="${n <= editRating ? "on" : ""}">★</button>`).join("");
 }
@@ -220,6 +280,9 @@ function openEdit(item) {
   form.title.value = item?.title || "";
   form.link.value = item?.link || "";
   form.note.value = item?.note || "";
+  form.kind.value = KINDS[item?.kind] ? item.kind : "novel";
+  form.links.value = (item?.links || []).join("\n");
+  form.aliases.value = (item?.aliases || []).join("，");
   form.createdAt.value = toLocalInput(item?.createdAt);
   editRating = item?.rating ?? 3;
   renderStarInput();
@@ -231,16 +294,21 @@ function openEdit(item) {
 
 form.addEventListener("submit", (e) => {
   if (e.submitter?.value !== "ok") return;
-  const base = editing || { id: uid(), done: false, doneAt: null };
+  const base = editing || { id: uid(), done: false, doneAt: null, source: "manual", externalIds: {} };
+  const cat = form.category.value;
+  const { kind, ...rest } = base;
   upsert({
-    ...base,
-    category: form.category.value,
+    ...rest,
+    category: cat,
     title: form.title.value.trim(),
     link: form.link.value.trim(),
     note: form.note.value.trim(),
     rating: editRating,
     createdAt: form.createdAt.value ? new Date(form.createdAt.value).toISOString() : now(),
     extra: collectExtra(),
+    ...(cat === "novel" ? { kind: form.kind.value } : {}),
+    links: CATS[cat]?.links ? splitList(form.links.value, /\n/) : [],
+    aliases: CATS[cat]?.fulfiller ? splitList(form.aliases.value, /[,，、\n]/) : [],
   });
   toast(editing ? "已保存" : "已收藏 ⭐");
 });
@@ -266,9 +334,10 @@ const EXTRACT_SCHEMA = {
           title: { type: "string" },
           note: { type: "string" },
           link: { type: "string" },
+          download: { type: "string" },
           ...Object.fromEntries(EXTRA_KEYS.map((k) => [k, { type: "string" }])),
         },
-        required: ["category", "title", "note", "link", ...EXTRA_KEYS],
+        required: ["category", "title", "note", "link", "download", ...EXTRA_KEYS],
         additionalProperties: false,
       },
     },
@@ -278,12 +347,13 @@ const EXTRACT_SCHEMA = {
 };
 
 const EXTRACT_PROMPT = `这是我想收藏的东西（截图，或一篇笔记的文字和配图）。请识别其中值得收藏的条目（可能有多个），并归入以下分类之一：
-${Object.entries(CATS).map(([k, c]) => `- ${k}: ${c.name}（可填字段：${c.fields.map((f) => `${f.key}=${f.label}`).join("，")}）`).join("\n")}
+${Object.entries(CATS).map(([k, c]) => `- ${k}: ${c.name}${c.fields.length || c.links ? `（可填字段：${[...c.fields.map((f) => `${f.key}=${f.label}`), ...(c.links ? ["download=下载地址"] : [])].join("，")}）` : ""}`).join("\n")}
 
 规则：
-- title 用条目本身的名字（书名、片名、店名、商品名、地名、工具名等），保持原语言。
+- title 用条目本身的名字（书名、片名、店名、商品名、游戏名、地名、工具名等），保持原语言。
+- 电子游戏（Steam、主机、手游）归入 game。
 - 只填能看到或能明确推断的信息，其它字段填空字符串 ""。
-- coupon 的 expiry 用 YYYY-MM-DD 格式；download 填下载/网盘/磁力链接。
+- coupon 的 expiry 用 YYYY-MM-DD 格式；download 填下载/网盘/磁力链接，提取码写在链接后面。
 - note 用一两句中文简述关键信息（如优惠内容、推荐理由、地址、营业时间、提取码），配图里的文字也要看。
 - 笔记标题往往只是噱头（如"这片太绝了"），title 要用正文/配图里真正的名字。
 - 识别不出任何条目时返回空数组。`;
@@ -449,7 +519,11 @@ async function recognize({ files = [], imageUrls = [], text = "", link = "" }) {
       createdAt: ts,
       done: false,
       doneAt: null,
+      source: files.length ? "screenshot" : "xhs",
       extra: Object.fromEntries(EXTRA_KEYS.filter((k) => r[k]).map((k) => [k, r[k]])),
+      links: r.download?.trim() ? [r.download.trim()] : [],
+      aliases: [],
+      externalIds: {},
       ...(shots.length ? { shots: shots.map((s) => s.id) } : {}),
       _checked: true,
     }));
@@ -578,6 +652,7 @@ function renderShotResults() {
       <div class="grid2">
         ${(CATS[r.category]?.fields || []).map((f) => `<input data-x="${f.key}" value="${esc(r.extra[f.key] || "")}" placeholder="${f.label}">`).join("")}
       </div>
+      ${CATS[r.category]?.links ? `<input data-k="download" value="${esc(r.links[0] || "")}" placeholder="下载链接（网盘分享链接，提取码可以写在后面）">` : ""}
       <input data-k="link" value="${esc(r.link)}" placeholder="链接">
       <input data-k="note" value="${esc(r.note)}" placeholder="备注">
     </div>`).join("");
@@ -590,6 +665,7 @@ $("#shotResults").addEventListener("input", (e) => {
   const r = shotResults[+box.dataset.idx];
   const k = e.target.dataset.k, x = e.target.dataset.x;
   if (k === "_checked") r._checked = e.target.checked;
+  else if (k === "download") r.links = e.target.value.trim() ? [e.target.value.trim()] : [];
   else if (k) r[k] = e.target.value;
   else if (x) r.extra[x] = e.target.value;
   if (k === "category") renderShotResults();
@@ -611,6 +687,7 @@ $("#btnShotSave").addEventListener("click", async () => {
   pendingShots = [];
   for (const { _checked, ...r } of picked) {
     r.extra = Object.fromEntries(Object.entries(r.extra).filter(([, v]) => v && v.trim()));
+    if (!CATS[r.category]?.links) r.links = [];
     items.push({ ...r, updatedAt: ts });
   }
   save();
@@ -637,14 +714,171 @@ const sform = $("#settingsForm");
 function openSettings() {
   sform.apiKey.value = cfg.apiKey || "";
   sform.syncPass.value = cfg.syncPass || "";
+  $("#hideDone").innerHTML = Object.entries(CATS).map(([k, c]) =>
+    `<label class="check"><input type="checkbox" name="hide_${k}" ${doneHidden(k) ? "checked" : ""}>${c.icon} ${c.name}</label>`).join("");
+  $("#shuyuServer").value = shuyuServer();
+  $("#pairCode").hidden = true;
   $("#dlgSettings").showModal();
+  loadAgents();
+  refreshNetdisk();
 }
 function readSettingsForm() {
   const apiKey = sform.apiKey.value.trim();
+  const hideDone = Object.fromEntries(Object.keys(CATS).map((k) => [k, !!sform[`hide_${k}`]?.checked]));
   // API Key 改动后标记待上传，下次同步时推到云端，其它设备会自动拿到
-  cfg = { ...cfg, apiKey, syncPass: sform.syncPass.value, apiKeyDirty: cfg.apiKeyDirty || apiKey !== cfg.apiKey };
+  cfg = { ...cfg, apiKey, syncPass: sform.syncPass.value, hideDone, apiKeyDirty: cfg.apiKeyDirty || apiKey !== cfg.apiKey };
   lsSet(LS_CFG, cfg);
+  render();
 }
+
+// ---------- 已配对的设备 ----------
+// 书屿、Plexus、Steamless 粘贴配对码（设备令牌）后读取和回报心愿；令牌只在生成时显示一次，可以吊销
+const fmtSeen = (iso) => (iso ? "最后在线 " + fmtTime(iso) : "还没连接过");
+async function loadAgents() {
+  const list = $("#agentList");
+  if (!cfg.syncPass) { list.innerHTML = `<li class="muted small">填好同步密码后可以配对。</li>`; return; }
+  const { data, error } = await sb.rpc("mc_agent_list", { p_pass: cfg.syncPass });
+  if (error) { list.innerHTML = `<li class="muted small">${esc(syncError(error))}</li>`; return; }
+  list.innerHTML = data.length ? data.map((a) => `
+    <li class="${a.revoked ? "revoked" : ""}"><span><b>${esc(a.name)}</b> · ${esc(APPS[a.app]?.name || a.app)}<br>
+      <span class="muted small">${a.revoked ? "已吊销" : fmtSeen(a.lastSeen)}</span></span>
+      ${a.revoked ? "" : `<button type="button" class="ghost" data-revoke="${esc(a.id)}">吊销</button>`}</li>`).join("")
+    : `<li class="muted small">还没有配对的设备。</li>`;
+}
+$("#btnPair").addEventListener("click", async () => {
+  readSettingsForm();
+  if (!cfg.syncPass) return toast("请先填写同步密码");
+  const app = $("#pairApp").value;
+  const { data, error } = await sb.rpc("mc_agent_create", { p_pass: cfg.syncPass, p_name: $("#pairName").value.trim(), p_app: app });
+  if (error) return toast(syncError(error));
+  $("#pairCode").hidden = false;
+  $("#pairCode").innerHTML = `<p class="small">在${esc(APPS[app].name)}的设置里粘贴这个配对码（只显示这一次）：</p>
+    <div class="row"><code id="pairToken">${esc(data.token)}</code><button type="button" class="ghost" id="btnCopyPair">复制</button></div>`;
+  $("#pairName").value = "";
+  loadAgents();
+});
+$("#pairCode").addEventListener("click", async (e) => {
+  if (e.target.id !== "btnCopyPair") return;
+  try { await navigator.clipboard.writeText($("#pairToken").textContent); toast("已复制配对码"); } catch { toast("复制失败，请手动选中复制"); }
+});
+$("#agentList").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-revoke]");
+  if (!b || !confirm("吊销后这台设备不能再读取和回报心愿，要重新配对才行。确定吊销吗？")) return;
+  const { error } = await sb.rpc("mc_agent_revoke", { p_pass: cfg.syncPass, p_id: b.dataset.revoke });
+  if (error) return toast(syncError(error));
+  loadAgents();
+});
+
+// ---------- 网盘账号 ----------
+// 夸克、百度的登录在 Windows 电脑上，书屿和 Plexus 共用；这里通过书屿的后台（Tailscale）扫码登录、退出，cookie 不经过云端。
+// 中枢和书屿网页版同在 therookiegit.github.io，直接沿用书屿网页版存的登录令牌；没有或过期了才在这里登录一次书屿，并写回同一个位置。
+const SHUYU_DEFAULT = "https://windows.tailc0b5f5.ts.net";
+const rawGet = (key) => { try { return localStorage.getItem(key) || ""; } catch { return ""; } };
+const rawSet = (key, v) => { try { v ? localStorage.setItem(key, v) : localStorage.removeItem(key); } catch {} };
+const shuyuServer = () => (cfg.shuyuServer || rawGet("shuyu-server") || SHUYU_DEFAULT).replace(/\/+$/, "");
+const nd = { status: null, signing: "", timer: null, error: "" };
+
+async function shuyu(path, data) {
+  const headers = {};
+  const token = rawGet("shuyu-token");
+  if (token) headers.Authorization = "Bearer " + token;
+  if (data !== undefined) headers["Content-Type"] = "application/json";
+  let res;
+  try {
+    res = await fetch(shuyuServer() + path, data === undefined ? { headers } : { method: "POST", headers, body: JSON.stringify(data) });
+  } catch {
+    throw Object.assign(new Error("Windows 电脑没有连上，暂时不能登录网盘"), { offline: true });
+  }
+  // Tailscale 在电脑离线时回 502 / 503
+  if (res.status >= 502) throw Object.assign(new Error("Windows 电脑没有连上，暂时不能登录网盘"), { offline: true });
+  if (res.status === 401) { rawSet("shuyu-token", ""); throw Object.assign(new Error("请先登录书屿"), { login: true }); }
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `书屿后台出错（HTTP ${res.status}）`);
+  return body;
+}
+
+const qrSVG = (rows) => `<svg viewBox="-4 -4 ${rows.length + 8} ${rows.length + 8}" role="img" aria-label="登录二维码" shape-rendering="crispEdges"><rect x="-4" y="-4" width="100%" height="100%" fill="#fff" stroke="none"/><path fill="#000" stroke="none" d="${rows.map((row, y) => [...row].map((c, x) => (c === "1" ? `M${x} ${y}h1v1h-1z` : "")).join("")).join("")}"/></svg>`;
+const ND_BUSY = ["waiting", "scanned", "checking"];
+
+function renderNetdisk() {
+  const box = $("#ndBox");
+  if (nd.error === "login") {
+    box.innerHTML = `<p class="small">书屿的后台要先登录（和书屿网页版是同一个登录，登录后书屿网页版也会登录上）。</p>
+      <div class="row"><input id="shuyuPass" type="password" placeholder="书屿的访问密码" autocomplete="off" style="flex:1;width:auto"><button type="button" class="ghost" data-nd="signin">登录书屿</button></div>`;
+    return;
+  }
+  if (nd.error) { box.innerHTML = `<p class="small warn">${esc(nd.error)}</p><button type="button" class="ghost" data-nd="retry">重试</button>`; return; }
+  if (!nd.status) { box.innerHTML = `<p class="muted small">正在连接书屿…</p>`; return; }
+  const rows = Object.entries(nd.status).map(([key, d]) => `
+    <li><span class="dot ${d.signed_in ? "on" : ""}"></span><span>${esc(d.label)}：${d.signed_in ? "已登录" + (d.name ? " · " + esc(d.name) : "") : "未登录"}</span>
+      ${d.signed_in ? `<button type="button" class="ghost" data-nd="logout" data-drive="${key}">退出</button>` : `<button type="button" class="ghost" data-nd="login" data-drive="${key}">扫码登录</button>`}</li>`).join("");
+  const drive = nd.status[nd.signing];
+  const login = drive?.login || {};
+  const shown = drive && !drive.signed_in && ["waiting", "scanned"].includes(login.state);
+  const words = { waiting: `用${drive?.app}扫一扫这个二维码，然后在手机上确认登录。二维码过期后会自动换新。`, scanned: "已扫码，请在手机上确认登录。",
+    checking: `正在登录${drive?.label}…`, failed: login.error || "登录没有完成，请重新获取二维码。" };
+  box.innerHTML = `<ul class="nd-list">${rows}</ul>${drive && !drive.signed_in && login.state !== "idle" ? `
+    <div class="nd-login">${shown ? `<div class="qr">${login.qr ? qrSVG(login.qr) : `<img src="${esc(login.image)}" alt="${esc(drive.label)}登录二维码">`}</div>` : ""}
+      <p class="small">${esc(words[login.state] || "")}</p>${login.state === "failed" ? `<button type="button" class="ghost" data-nd="login" data-drive="${nd.signing}">重新获取二维码</button>` : ""}</div>` : ""}`;
+}
+
+async function refreshNetdisk() {
+  clearTimeout(nd.timer);
+  if (!$("#dlgSettings").open) return;
+  try {
+    nd.status = await shuyu("/api/netdisk");
+    nd.error = "";
+    const drive = nd.status[nd.signing];
+    if (drive?.signed_in) { toast(`${drive.label}已登录`); nd.signing = ""; }
+    if (drive && ND_BUSY.includes(drive.login?.state)) nd.timer = setTimeout(refreshNetdisk, 2000);
+  } catch (err) {
+    nd.status = null;
+    nd.error = err.login ? "login" : err.message;
+  }
+  renderNetdisk();
+}
+
+$("#ndBox").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-nd]");
+  if (!b) return;
+  const act = b.dataset.nd, key = b.dataset.drive;
+  try {
+    if (act === "retry") { nd.error = ""; renderNetdisk(); return refreshNetdisk(); }
+    if (act === "signin") {
+      const res = await shuyu("/api/login", { password: $("#shuyuPass").value });
+      rawSet("shuyu-token", res.token);
+      nd.error = "";
+      return refreshNetdisk();
+    }
+    if (act === "login") {
+      nd.signing = key;
+      nd.status[key] = await shuyu("/api/netdisk/login", { drive: key });
+      renderNetdisk();
+      clearTimeout(nd.timer);
+      nd.timer = setTimeout(refreshNetdisk, 2000);
+    }
+    if (act === "logout") {
+      const label = nd.status?.[key]?.label || "网盘";
+      if (!confirm(`会同时退出书屿和 Plexus 里的${label}，确定退出吗？`)) return;
+      await shuyu("/api/netdisk/logout", { drive: key });
+      refreshNetdisk();
+    }
+  } catch (err) {
+    if (err.login || err.offline) { nd.error = err.login ? "login" : err.message; renderNetdisk(); } else toast(err.message);
+  }
+});
+$("#shuyuServer").addEventListener("change", (e) => {
+  cfg = { ...cfg, shuyuServer: e.target.value.trim() };
+  lsSet(LS_CFG, cfg);
+  nd.status = null; nd.error = "";
+  renderNetdisk();
+  refreshNetdisk();
+});
+$("#ndBox").addEventListener("keydown", (e) => {
+  // 在设置表单里按回车会关掉设置，这里改成登录书屿
+  if (e.key === "Enter" && e.target.id === "shuyuPass") { e.preventDefault(); $('[data-nd="signin"]').click(); }
+});
+$("#dlgSettings").addEventListener("close", () => clearTimeout(nd.timer));
 $("#btnSettings").addEventListener("click", openSettings);
 sform.addEventListener("submit", () => { readSettingsForm(); toast("设置已保存"); sync(); });
 $("#btnSyncNow").addEventListener("click", () => { readSettingsForm(); sync(true); });
@@ -681,7 +915,32 @@ function mergeItems(a, b) {
     const cur = map.get(i.id);
     if (!cur || (i.updatedAt || "") > (cur.updatedAt || "")) map.set(i.id, i);
   }
-  return [...map.values()];
+  return [...map.values()].map(normalize);
+}
+
+function syncError(err) {
+  if (err?.code === "28P01") return "同步密码错误";
+  if (err?.code === "MC429") return `同步密码错误次数太多，请 ${Math.ceil((+err.hint || 900) / 60)} 分钟后再试`;
+  if (err?.code === "PGRST202") return "云端还没执行最新的迁移，见 supabase/README.md";
+  return "同步失败：" + (err?.message || err);
+}
+
+// 各应用回报的「已拥有」；云端还没执行 002 迁移时（PGRST202）跳过
+async function pullFulfill() {
+  const { data, error } = await sb.rpc("mc_fulfill_pull", { p_pass: cfg.syncPass });
+  if (error) throw error;
+  fulfill = data || [];
+  lsSet(LS_FULFILL, fulfill);
+}
+
+async function rejectFulfill(item, app) {
+  if (!cfg.syncPass) return toast("需要先在设置里填同步密码");
+  const { error } = await sb.rpc("mc_fulfill_reject", { p_pass: cfg.syncPass, p_item_id: item.id, p_app: app });
+  if (error) return toast(syncError(error));
+  fulfill = fulfill.map((f) => (f.itemId === item.id && f.app === app ? { ...f, rejected: true } : f));
+  lsSet(LS_FULFILL, fulfill);
+  render();
+  toast(`已标记「不是这个」，${APPS[app]?.name || app}以后会换别的去匹配`);
 }
 
 async function pullAll() {
@@ -743,7 +1002,9 @@ async function doSync(manual) {
     const remote = await pullAll();
     const remoteAt = new Map(remote.map((r) => [r.id, r.updatedAt || ""]));
     const merged = mergeItems(items, remote);
-    if (JSON.stringify(merged) !== JSON.stringify(items)) {
+    const before = JSON.stringify(fulfill);
+    await pullFulfill().catch((e) => { if (e?.code !== "PGRST202") throw e; console.warn("跳过已拥有记录：", e.message); });
+    if (JSON.stringify(merged) !== JSON.stringify(items) || JSON.stringify(fulfill) !== before) {
       items = merged;
       lsSet(LS_DATA, items);
       render();
@@ -760,7 +1021,7 @@ async function doSync(manual) {
   } catch (err) {
     console.error(err);
     setSyncStatus("⚠ 同步失败");
-    toast(err?.code === "28P01" ? "同步密码错误" : "同步失败：" + (err.message || err));
+    toast(syncError(err));
   }
 }
 

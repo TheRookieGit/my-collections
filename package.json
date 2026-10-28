@@ -3,9 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node tests/migrations.mjs"
+    "test": "node tests/migrations.mjs && node tests/page.cjs"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "0.5.10"
+    "@electric-sql/pglite": "0.5.10",
+    "jsdom": "^29.1.1"
   }
 }
