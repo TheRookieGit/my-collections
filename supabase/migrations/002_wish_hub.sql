@@ -40,7 +40,7 @@ begin
   end if;
   v_failures := nextval('public.mc_check_failures');
   if v_failures >= 10 then
-    perform setval('public.mc_check_locked', extract(epoch from now())::bigint + 900);
+    perform setval('public.mc_check_locked', floor(extract(epoch from now()))::bigint + 900);
     perform setval('public.mc_check_failures', 1, false);
   end if;
   raise exception 'wrong password' using errcode = '28P01';
