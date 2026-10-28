@@ -48,3 +48,12 @@
 
 用法：笔记里点「分享」选「存到收藏夹」；或「复制链接」后运行快捷指令（推荐绑定「设置 → 辅助功能 → 触控 → 轻点背面」）。
 匹配不到正文时（如小红书改版），网站会退回到只按分享文字识别。
+
+## collectionkit（书屿、Plexus 共用的代码）
+
+`collectionkit/` 是书屿和 Plexus 共用的 Python 代码，和网页本身无关。两个应用把这个仓库作为 git submodule 引入，然后 `import collectionkit`，只用到 Python 标准库。
+
+- **网盘登录全部应用共用**：夸克、百度的登录保存在这台电脑的 `%LOCALAPPDATA%\CollectionKit\netdisk.sqlite3`（cookie 用 Windows DPAPI 加密，不上传）。在书屿或 Plexus 里扫码登录，另一个应用立即可以用；在任何一个里退出，或者网盘提示登录已过期，所有应用都需要重新扫码。
+- 各应用转存到自己网盘里的文件夹不同（`书屿转存`、`Plexus转存`），下载什么、放到哪里由各应用自己决定。
+- 测试：`python -m unittest discover -s tests -t .`，改动 `collectionkit/` 或 `tests/` 后由 `.github/workflows/collectionkit.yml` 在 Windows 上用 Python 3.10 和 3.12 运行。
+- 应用通过 submodule 固定使用某个版本，改动后需要在各应用里分别更新 submodule。

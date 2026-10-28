@@ -1,0 +1,24 @@
+# Tests the shared Python code that 书屿 and Plexus take as a submodule. The page itself needs no build.
+name: Test collectionkit
+
+on:
+  push:
+    paths: ['collectionkit/**', 'tests/**', '.github/workflows/collectionkit.yml']
+  pull_request:
+    paths: ['collectionkit/**', 'tests/**', '.github/workflows/collectionkit.yml']
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        # 书屿 supports Python 3.10 and newer; the apps are packaged with 3.12.
+        python-version: ['3.10', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Run tests
+        run: python -m unittest discover -s tests -t .
