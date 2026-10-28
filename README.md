@@ -63,5 +63,6 @@
 
 - **网盘登录全部应用共用**：夸克、百度的登录保存在这台电脑的 `%LOCALAPPDATA%\CollectionKit\netdisk.sqlite3`（cookie 用 Windows DPAPI 加密，不上传）。在书屿或 Plexus 里扫码登录，另一个应用立即可以用；在任何一个里退出，或者网盘提示登录已过期，所有应用都需要重新扫码。
 - 各应用转存到自己网盘里的文件夹不同（`书屿转存`、`Plexus转存`），下载什么、放到哪里由各应用自己决定。
-- 测试：`python -m unittest discover -s tests -t .`，改动 `collectionkit/` 或 `tests/` 后由 `.github/workflows/collectionkit.yml` 在 Windows 上用 Python 3.10 和 3.12 运行。
+- **心愿中枢客户端**（`collectionkit/hub.py`）：应用用配对码连接这个网站的云端，拉取自己负责的分类、添加心愿、回报「已拥有」。配对码按应用分开、用 DPAPI 加密保存在 `%LOCALAPPDATA%\CollectionKit\hub.json`；连不上时要发送的内容先存在同一文件夹的 `hub.sqlite3`，联网后补发，不影响应用本身。`collectionkit/testing.py` 是给应用测试用的内存版中枢。
+- 测试：`python -m unittest discover -s tests -t .`；数据库迁移和网页本身用 `npm ci && npm test`（迁移在 PGlite 里跑，网页在 jsdom 里跑，都不联网）。由 `.github/workflows/collectionkit.yml` 运行：Python 在 Windows 上用 3.10 和 3.12。
 - 应用通过 submodule 固定使用某个版本，改动后需要在各应用里分别更新 submodule。
