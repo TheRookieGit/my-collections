@@ -20,8 +20,8 @@
 - 可选：云同步（Supabase）。数据表对外完全关闭，只能凭同步密码通过数据库函数读写，实现多设备同步
 
 ### 配置 Supabase
-1. SQL Editor 里运行 [supabase/schema.sql](supabase/schema.sql)
-2. 再单独运行文件末尾那句设置同步密码的 SQL（填你自己的密码，不要提交到仓库）
+1. SQL Editor 里按编号顺序运行 [supabase/migrations](supabase/migrations) 下的文件，详见 [supabase/README.md](supabase/README.md)
+2. 再单独运行设置同步密码的 SQL（填你自己的密码，不要提交到仓库）
 3. 网站设置里填同步密码
 
 ### 截图识别

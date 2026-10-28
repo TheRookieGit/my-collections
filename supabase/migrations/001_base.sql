@@ -1,7 +1,16 @@
--- 在 Supabase Dashboard → SQL Editor 里整段运行一次即可（可重复运行）。
+-- 001 基础表：收藏、同步密码、共享设置、截图。
+-- 在 Supabase Dashboard → SQL Editor 里整段运行（可重复运行），迁移的顺序和说明见 supabase/README.md。
 -- 同步密码另外设置，见文件末尾，千万不要把真实密码写进这个公开文件。
 
 create extension if not exists pgcrypto with schema extensions;
+
+-- 记录执行过哪些迁移（每个迁移文件开头都会建这张表，所以先执行哪个都不会出错）
+create table if not exists public.mc_migrations (
+  name       text        primary key,
+  applied_at timestamptz not null default now()
+);
+alter table public.mc_migrations enable row level security;
+revoke all on public.mc_migrations from anon, authenticated;
 
 -- 收藏数据：每条一行
 create table if not exists public.items (
@@ -130,6 +139,8 @@ revoke execute on function public.mc_pull(text)        from public;
 revoke execute on function public.mc_push(text, jsonb) from public;
 grant  execute on function public.mc_pull(text)        to anon, authenticated;
 grant  execute on function public.mc_push(text, jsonb) to anon, authenticated;
+
+insert into public.mc_migrations (name) values ('001_base') on conflict (name) do nothing;
 
 -- ===== 设置 / 修改同步密码 =====
 -- 在 SQL Editor 里单独运行下面这句（把中文换成你的密码，建议 12 位以上），不要保存到这个文件：

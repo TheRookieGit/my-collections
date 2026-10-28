@@ -1,11 +1,12 @@
-# Tests the shared Python code that 书屿 and Plexus take as a submodule. The page itself needs no build.
+# Tests the shared Python code that 书屿 and Plexus take as a submodule, and the Supabase migrations
+# (in PGlite, never a real project). The page itself needs no build.
 name: Test collectionkit
 
 on:
   push:
-    paths: ['collectionkit/**', 'tests/**', '.github/workflows/collectionkit.yml']
+    paths: ['collectionkit/**', 'tests/**', 'supabase/migrations/**', 'package*.json', '.github/workflows/collectionkit.yml']
   pull_request:
-    paths: ['collectionkit/**', 'tests/**', '.github/workflows/collectionkit.yml']
+    paths: ['collectionkit/**', 'tests/**', 'supabase/migrations/**', 'package*.json', '.github/workflows/collectionkit.yml']
   workflow_dispatch:
 
 jobs:
@@ -22,3 +23,14 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Run tests
         run: python -m unittest discover -s tests -t .
+
+  migrations:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Run the migrations twice and check the RPCs
+        run: npm test

@@ -1,7 +1,7 @@
 import Anthropic from "https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.128.0/+esm";
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/+esm";
 
-// Supabase 公开配置（publishable key 本来就是公开的；表对外关闭，只能凭同步密码通过函数读写，见 supabase/schema.sql）
+// Supabase 公开配置（publishable key 本来就是公开的；表对外关闭，只能凭同步密码通过函数读写，见 supabase/README.md）
 const SUPABASE_URL = "https://lxicymhrzkuiqisuiotg.supabase.co";
 const SUPABASE_KEY = "sb_publishable_KsJzV--VCz5k8WYQ-aqMLQ_rMgf-w9y";
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
