@@ -12,10 +12,10 @@ await db.exec(`create schema extensions; create role anon; create role authentic
   -- Supabase grants new tables and sequences to anon by default; the migrations must take that back.
   alter default privileges in schema public grant all on tables to anon, authenticated;
   alter default privileges in schema public grant all on sequences to anon, authenticated;`);
-const files = ['001_base.sql', '002_wish_hub.sql', '003_shots.sql'];
+const files = ['001_base.sql', '002_wish_hub.sql', '003_shots.sql', '004_foodcollection.sql'];
 for (let round = 0; round < 2; round++) for (const f of files) await db.exec(readFileSync(new URL(f, dir), 'utf8'));
 console.log('PASS migrations run twice');
-assert.deepEqual((await db.query('select name from public.mc_migrations order by name')).rows.map((r) => r.name), ['001_base', '002_wish_hub', '003_shots']);
+assert.deepEqual((await db.query('select name from public.mc_migrations order by name')).rows.map((r) => r.name), ['001_base', '002_wish_hub', '003_shots', '004_foodcollection']);
 await db.exec(`insert into public.mc_secret (id, hash) values (1, extensions.crypt('pw', extensions.gen_salt('bf', 4)))`);
 
 const anon = async (sql, params) => { await db.exec('set role anon'); try { return (await db.query(sql, params)).rows; } finally { await db.exec('reset role'); } };
@@ -62,6 +62,12 @@ await fails('select public.mc_wish_put($1, $2)', [agent.token, JSON.stringify(it
 stored = await one('select public.mc_wish_put($1, $2)', [agent.token, JSON.stringify(item('c1', 'novel', '冒充', '2027-01-01T00:00:00Z'))]);
 assert.equal(stored[0].category, 'coupon', 'another category is not overwritten through its id');
 await fails('select public.mc_wish_put($1, $2)', ['mch_wrong', JSON.stringify(item('n3', 'novel', 'x', '2026-01-01T00:00:00Z'))], '28000');
+// FoodCollection pairs like the other apps and only ever reaches the 餐厅 category.
+const food = await one("select public.mc_agent_create('pw', 'Mac', 'foodcollection')");
+await anon('select public.mc_push($1, $2)', ['pw', JSON.stringify([item('r1', 'restaurant', '店', '2026-01-01T00:00:00Z')])]);
+assert.deepEqual((await one('select public.mc_wishes($1, $2, $3)', [food.token, null, null])).items.map((i) => i.id), ['r1']);
+await fails('select public.mc_wish_put($1, $2)', [food.token, JSON.stringify(item('nx', 'novel', '书', '2026-03-01T00:00:00Z'))], '42501');
+assert.equal((await one('select public.mc_wish_put($1, $2)', [food.token, JSON.stringify(item('r2', 'restaurant', '新店', '2026-03-01T00:00:00Z'))]))[0].title, '新店');
 console.log('PASS apps add wishes in their own categories, newer copy wins');
 
 await anon('select public.mc_fulfill_put($1, $2)', [agent.token, JSON.stringify([{ itemId: 'n2', ref: 'a/书二.txt', url: 'https://x/#book=1', title: '书二', ownedAt: '2026-03-01T00:00:00Z' }, { itemId: 'n2', ref: 'dup' }])]);

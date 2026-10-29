@@ -1,6 +1,6 @@
 # Supabase
 
-云同步用的数据库。表对外完全关闭，网页和各应用只能调用 `mc_*` 函数：网页凭同步密码，书屿、Plexus、Steamless 凭配对时拿到的设备令牌。
+云同步用的数据库。表对外完全关闭，网页和各应用只能调用 `mc_*` 函数：网页凭同步密码，书屿、Plexus、Steamless、FoodCollection 凭配对时拿到的设备令牌。
 
 ## 执行迁移
 
@@ -11,6 +11,7 @@
 | [001_base.sql](migrations/001_base.sql) | 收藏、同步密码、共享设置、截图（原来的 `schema.sql`） |
 | [002_wish_hub.sql](migrations/002_wish_hub.sql) | 心愿中枢：接口版本、密码失败次数限制、已配对的设备、已拥有记录、应用拉取和添加心愿 |
 | [003_shots.sql](migrations/003_shots.sql) | 原截图双向同步：已配对的应用凭设备令牌上传、读取心愿的原截图 |
+| [004_foodcollection.sql](migrations/004_foodcollection.sql) | 可以给 FoodCollection（Mac 上的「今天吃什么」）配对：只读写「餐厅」，吃过的店回报「已拥有」 |
 
 想知道已经执行到哪一个，运行：
 

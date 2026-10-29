@@ -15,7 +15,7 @@ const CATS = {
   tv:         { name: "电视剧",   en: "Series",     hue: "#3557A8", icon: '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="m9 2 3 4 3-4M8 21h8"/>', fields: [{ key: "year", label: "年份" }], fulfiller: "plexus", links: true },
   game:       { name: "游戏",     en: "Games",      hue: "#6A44D4", icon: '<path d="M7 8h10a4 4 0 0 1 3.9 4.9l-1 4.3a2.3 2.3 0 0 1-4 .8L14 16h-4l-1.9 2a2.3 2.3 0 0 1-4-.8l-1-4.3A4 4 0 0 1 7 8z"/><path d="M8 11v3M6.5 12.5h3M15.5 12h.01M17.5 13.5h.01"/>', fields: [{ key: "release", label: "发售" }], fulfiller: "steamless", links: true },
   coupon:     { name: "Coupon",   en: "Coupon",     hue: "#C08A1E", icon: '<path d="M3 8a2 2 0 0 0 2-2h14a2 2 0 0 0 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 0-2 2H5a2 2 0 0 0-2-2v-2a2 2 0 0 0 0-4z"/><path d="M14 6v12" stroke-dasharray="1.5 2"/>', fields: [{ key: "store", label: "商家" }, { key: "code", label: "券码" }, { key: "expiry", label: "到期日", type: "date" }] },
-  restaurant: { name: "餐厅",     en: "Dining",     hue: "#C0502E", icon: '<path d="M6 3v7a2 2 0 0 0 4 0V3M8 3v18"/><path d="M17 21V3c-2 1.5-3 4-3 7s1 4 3 4"/>', fields: [{ key: "cuisine", label: "菜系" }, { key: "address", label: "地址" }] },
+  restaurant: { name: "餐厅",     en: "Dining",     hue: "#C0502E", icon: '<path d="M6 3v7a2 2 0 0 0 4 0V3M8 3v18"/><path d="M17 21V3c-2 1.5-3 4-3 7s1 4 3 4"/>', fields: [{ key: "cuisine", label: "菜系" }, { key: "address", label: "地址" }], fulfiller: "foodcollection" },
   tool:       { name: "工具",     en: "Toolkit",    hue: "#3E5566", icon: '<path d="M14.5 6.5a4 4 0 0 1 5-5l-2.5 2.5.5 2.5 2.5.5 2.5-2.5a4 4 0 0 1-5 5L8 20a2.1 2.1 0 0 1-3-3z"/>', fields: [{ key: "platform", label: "平台" }] },
   place:      { name: "想去玩",   en: "Journeys",   hue: "#1F8A80", icon: '<path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/>', fields: [{ key: "location", label: "位置" }] },
   grocery:    { name: "超市购物", en: "Pantry",     hue: "#5E8A2E", icon: '<path d="M5 8h14l-1.2 11.1a2 2 0 0 1-2 1.9H8.2a2 2 0 0 1-2-1.9z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8"/>', fields: [{ key: "store", label: "超市" }, { key: "quantity", label: "数量" }] },
@@ -31,6 +31,8 @@ const APPS = {
   plexus:    { name: "Plexus",    send: "https://therookiegit.github.io/plexus/downloads.html" },
   // Steamless 是电脑上的桌面应用：链接交给本机的 Steamless（它没开着的话打不开）
   steamless: { name: "Steamless", send: "http://localhost:5174/" },
+  // Mac 上的 FoodCollection（今天吃什么）：想吃清单就是这里的「餐厅」，吃过了回报「已拥有」
+  foodcollection: { name: "FoodCollection" },
 };
 // 默认隐藏「已实现」按钮的分类：小说下载到书屿就算数了
 const HIDE_DONE = { novel: true };
@@ -1103,6 +1105,7 @@ function syncError(err) {
   if (err?.code === "28P01") return "同步密码错误";
   if (err?.code === "MC429") return `同步密码错误次数太多，请 ${Math.ceil((+err.hint || 900) / 60)} 分钟后再试`;
   if (err?.code === "PGRST202") return "云端还没执行最新的迁移，见 supabase/README.md";
+  if (err?.code === "22023") return "云端还没执行最新的迁移（004_foodcollection.sql），见 supabase/README.md";
   return "同步失败：" + (err?.message || err);
 }
 
