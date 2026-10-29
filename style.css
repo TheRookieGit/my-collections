@@ -122,6 +122,7 @@ legend { font-size: 13px; padding: 0 4px; }
 .shot-item { border: 1px solid var(--line); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
 .shot-item .row { align-items: center; }
 .shot-item input[type=checkbox] { width: auto; }
+.shot-item .seen { font-size: 13px; color: var(--muted); }
 .shot-item .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 
 .clip-text { font-weight: 600; word-break: break-word; }

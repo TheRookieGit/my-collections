@@ -25,7 +25,13 @@ w.localStorage.setItem('mc.items.v1', JSON.stringify([
 ]));
 w.localStorage.setItem('mc.config.v1', JSON.stringify({ apiKey: '', syncPass: 'pw', shuyuServer: 'http://127.0.0.1:9' }));
 const fulfillRows = [{ itemId: 'n2', app: 'shuyu', ref: 'a.txt', url: 'https://therookiegit.github.io/shuyu/#book=x', title: '已下好的书', ownedAt: '2026-03-01T00:00:00Z', rejected: false }];
-w.Anthropic = class {};
+// Screenshot recognition answers whatever the test sets in `reply`; the images never reach a canvas.
+let reply = [];
+const config = {};
+w.Anthropic = class { constructor() { this.messages = { create: async () => ({ stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify({ items: reply }) }] }) }; } };
+w.createImageBitmap = async () => ({ width: 10, height: 10 });
+w.HTMLCanvasElement.prototype.getContext = () => ({ drawImage() {} });
+w.HTMLCanvasElement.prototype.toDataURL = () => 'data:image/jpeg;base64,AAAA';
 w.createClient = () => ({
   rpc: async (name, args) => {
     rpcs.push([name, args]);
@@ -33,13 +39,14 @@ w.createClient = () => ({
     if (name === 'mc_fulfill_pull') return { data: fulfillRows, error: null };
     if (name === 'mc_agent_list') return { data: [{ id: 'a1', name: '书屿 Windows', app: 'shuyu', createdAt: ts, lastSeen: null, revoked: false }], error: null };
     if (name === 'mc_agent_create') return { data: { id: 'a2', token: 'mch_' + '0'.repeat(48), app: args.p_app, name: 'x' }, error: null };
-    if (name === 'mc_get_config') return { data: {}, error: null };
+    if (name === 'mc_get_config') return { data: config, error: null };
     return { data: null, error: null };
   },
   functions: { invoke: async () => ({}) },
 });
 w.navigator.clipboard = { readText: async () => '', writeText: async () => {} };
-w.indexedDB = { open: () => ({}) };
+// No IndexedDB here: opening it fails, as in a private window, so a sync does not wait on it forever.
+w.indexedDB = { open: () => { const req = { error: new Error('no IndexedDB') }; setTimeout(() => req.onerror?.()); return req; } };
 w.fetch = async () => { throw new TypeError('Failed to fetch'); };
 w.eval(code);
 const $ = (s) => w.document.querySelector(s);
@@ -86,6 +93,20 @@ const tick = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   saved = JSON.parse(w.localStorage.getItem('mc.items.v1')).find((i) => i.title === '新片');
   assert.equal(saved.source, 'manual'); assert.equal(saved.kind, undefined);
   console.log('PASS edit form: type, links and aliases per category; new items say they were added by hand');
+
+  config.apiKey = 'k'; // the page fetches the key with the sync password
+  const shot = (category, title, aliases = '') => ({ category, title, aliases, note: '', link: '', download: '' });
+  reply = [shot('novel', '旧小说'), shot('tv', 'ホタルの嫁入り', '萤火虫的出嫁 / ホタルの嫁入り'), shot('tv', '萤火虫的出嫁'), shot('coupon', '新券', '别名')];
+  Object.defineProperty($('#shotInput'), 'files', { configurable: true, value: [new w.File(['x'], 'a.png', { type: 'image/png' })] });
+  $('#shotInput').dispatchEvent(new w.Event('change')); await tick(100);
+  const rows = $$('#shotResults .shot-item');
+  assert.equal(rows.length, 4);
+  assert.deepEqual(rows.map((r) => r.querySelector('[data-k="_checked"]').checked), [false, true, false, true]);
+  assert.match(rows[0].textContent, /已收藏过「旧小说」/); assert.match(rows[2].textContent, /和上面一条重复/);
+  assert.equal(rows[1].querySelector('[data-k="aliases"]').value, '萤火虫的出嫁', 'other names kept as aliases, the title left out');
+  assert.ok(!rows[3].querySelector('[data-k="aliases"]'), 'no aliases where no app matches by name');
+  $('#dlgShot').close();
+  console.log('PASS screenshot results: ones already saved and repeats unchecked, other names kept as aliases');
 
   $('#btnSettings').click(); await tick(100);
   assert.match($('#agentList').textContent, /书屿 Windows · 书屿/);

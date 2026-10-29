@@ -12,7 +12,7 @@ const CATS = {
   novel:      { name: "小说",     icon: "📚", fields: [{ key: "author", label: "作者" }], fulfiller: "shuyu", links: true },
   movie:      { name: "电影",     icon: "🎬", fields: [{ key: "year", label: "年份" }], fulfiller: "plexus", links: true },
   tv:         { name: "电视剧",   icon: "📺", fields: [{ key: "year", label: "年份" }], fulfiller: "plexus", links: true },
-  game:       { name: "游戏",     icon: "🎮", fields: [], fulfiller: "steamless" },
+  game:       { name: "游戏",     icon: "🎮", fields: [{ key: "release", label: "发售" }], fulfiller: "steamless" },
   coupon:     { name: "Coupon",   icon: "🎟️", fields: [{ key: "store", label: "商家" }, { key: "code", label: "券码" }, { key: "expiry", label: "到期日", type: "date" }] },
   restaurant: { name: "餐厅",     icon: "🍜", fields: [{ key: "cuisine", label: "菜系" }, { key: "address", label: "地址" }] },
   tool:       { name: "工具",     icon: "🧰", fields: [{ key: "platform", label: "平台" }] },
@@ -335,9 +335,10 @@ const EXTRACT_SCHEMA = {
           note: { type: "string" },
           link: { type: "string" },
           download: { type: "string" },
+          aliases: { type: "string" },
           ...Object.fromEntries(EXTRA_KEYS.map((k) => [k, { type: "string" }])),
         },
-        required: ["category", "title", "note", "link", "download", ...EXTRA_KEYS],
+        required: ["category", "title", "note", "link", "download", "aliases", ...EXTRA_KEYS],
         additionalProperties: false,
       },
     },
@@ -351,6 +352,7 @@ ${Object.entries(CATS).map(([k, c]) => `- ${k}: ${c.name}${c.fields.length || c.
 
 规则：
 - title 用条目本身的名字（书名、片名、店名、商品名、游戏名、地名、工具名等），保持原语言。
+- aliases 填图里出现的这个条目的其他名字（中文译名、原名、英文名、简称），用 / 分隔，不要重复 title；没有就填 ""。
 - 电子游戏（Steam、主机、手游）归入 game。
 - 只填能看到或能明确推断的信息，其它字段填空字符串 ""。
 - coupon 的 expiry 用 YYYY-MM-DD 格式；download 填下载/网盘/磁力链接，提取码写在链接后面。
@@ -522,11 +524,12 @@ async function recognize({ files = [], imageUrls = [], text = "", link = "" }) {
       source: files.length ? "screenshot" : "xhs",
       extra: Object.fromEntries(EXTRA_KEYS.filter((k) => r[k]).map((k) => [k, r[k]])),
       links: r.download?.trim() ? [r.download.trim()] : [],
-      aliases: [],
+      aliases: CATS[r.category]?.fulfiller ? splitList(r.aliases || "", /\s*\/\s*/).filter((a) => a !== r.title.trim()) : [],
       externalIds: {},
       ...(shots.length ? { shots: shots.map((s) => s.id) } : {}),
       _checked: true,
     }));
+    markSeen(shotResults);
     pendingShots = shots;
     $("#shotState").textContent = shotResults.length ? `识别到 ${shotResults.length} 条，确认/修改后保存：` : "没有识别到可收藏的条目，可以手动添加。";
     renderShotResults();
@@ -640,6 +643,21 @@ $("#btnClipGo").addEventListener("click", () => {
 window.addEventListener("focus", () => checkClipboard());
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") checkClipboard(); });
 
+// 识别结果里已经收藏过的（同分类、书名或别名相同），以及同一批里重复出现的，标出来并默认不勾选
+const nameKey = (s) => String(s || "").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+const namesOf = (i) => [i.title, ...(i.aliases || [])].map(nameKey).filter(Boolean);
+function markSeen(results) {
+  const earlier = [];
+  for (const r of results) {
+    const names = namesOf(r);
+    const same = (i) => i.category === r.category && namesOf(i).some((n) => names.includes(n));
+    const old = live().find(same);
+    r._seen = old ? `已收藏过「${old.title}」` : earlier.some(same) ? "和上面一条重复" : "";
+    if (r._seen) r._checked = false;
+    earlier.push(r);
+  }
+}
+
 function renderShotResults() {
   $("#shotResults").innerHTML = shotResults.map((r, idx) => `
     <div class="shot-item" data-idx="${idx}">
@@ -648,7 +666,9 @@ function renderShotResults() {
         <select data-k="category" style="width:auto">${Object.entries(CATS).map(([k, c]) => `<option value="${k}" ${k === r.category ? "selected" : ""}>${c.icon} ${c.name}</option>`).join("")}</select>
         <span class="stars-input">${[1, 2, 3, 4, 5].map((n) => `<button type="button" data-rate="${n}" class="${n <= r.rating ? "on" : ""}">★</button>`).join("")}</span>
       </div>
+      ${r._seen ? `<div class="seen">${esc(r._seen)}，默认不保存</div>` : ""}
       <input data-k="title" value="${esc(r.title)}" placeholder="标题">
+      ${CATS[r.category]?.fulfiller ? `<input data-k="aliases" value="${esc(r.aliases.join(" / "))}" placeholder="别名（译名、原名），用 / 分隔">` : ""}
       <div class="grid2">
         ${(CATS[r.category]?.fields || []).map((f) => `<input data-x="${f.key}" value="${esc(r.extra[f.key] || "")}" placeholder="${f.label}">`).join("")}
       </div>
@@ -666,6 +686,7 @@ $("#shotResults").addEventListener("input", (e) => {
   const k = e.target.dataset.k, x = e.target.dataset.x;
   if (k === "_checked") r._checked = e.target.checked;
   else if (k === "download") r.links = e.target.value.trim() ? [e.target.value.trim()] : [];
+  else if (k === "aliases") r.aliases = splitList(e.target.value, /\s*\/\s*/);
   else if (k) r[k] = e.target.value;
   else if (x) r.extra[x] = e.target.value;
   if (k === "category") renderShotResults();
@@ -685,9 +706,10 @@ $("#btnShotSave").addEventListener("click", async () => {
     try { await storeShots(pendingShots); } catch (err) { toast("原截图保存失败：" + err.message); }
   }
   pendingShots = [];
-  for (const { _checked, ...r } of picked) {
+  for (const { _checked, _seen, ...r } of picked) {
     r.extra = Object.fromEntries(Object.entries(r.extra).filter(([, v]) => v && v.trim()));
     if (!CATS[r.category]?.links) r.links = [];
+    if (!CATS[r.category]?.fulfiller) r.aliases = [];
     items.push({ ...r, updatedAt: ts });
   }
   save();
