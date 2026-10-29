@@ -904,8 +904,10 @@ function openSettings() {
 function readSettingsForm() {
   const apiKey = sform.apiKey.value.trim();
   const hideDone = Object.fromEntries(Object.keys(CATS).map((k) => [k, !!sform[`hide_${k}`]?.checked]));
-  // API Key 改动后标记待上传，下次同步时推到云端，其它设备会自动拿到
-  cfg = { ...cfg, apiKey, syncPass: sform.syncPass.value, hideDone, apiKeyDirty: cfg.apiKeyDirty || apiKey !== cfg.apiKey };
+  // 改动后标记待上传，下次同步时推到云端，其它设备会自动拿到
+  const hideChanged = Object.keys(CATS).some((k) => hideDone[k] !== doneHidden(k));
+  cfg = { ...cfg, apiKey, syncPass: sform.syncPass.value, hideDone, apiKeyDirty: cfg.apiKeyDirty || apiKey !== cfg.apiKey,
+    ...(hideChanged ? { hideDoneAt: now(), hideDoneDirty: true } : {}) };
   lsSet(LS_CFG, cfg);
   render();
 }
@@ -1128,25 +1130,42 @@ async function pullAll() {
   return data || [];
 }
 
-// 跨设备共享的设置：目前只有 Anthropic API Key
+// 跨设备共享的设置：Anthropic API Key，和哪些分类隐藏「已实现」按钮。
+// 隐藏的分类带修改时间（hideDoneAt），较新的一方为准；云端还没有时以本机为准。
 async function syncConfig() {
-  if (cfg.apiKeyDirty) {
-    const { error } = await sb.rpc("mc_set_config", { p_pass: cfg.syncPass, p_data: { apiKey: cfg.apiKey } });
-    if (error) throw error;
-    cfg.apiKeyDirty = false;
-    lsSet(LS_CFG, cfg);
-    return;
-  }
   const { data, error } = await sb.rpc("mc_get_config", { p_pass: cfg.syncPass });
   if (error) throw error;
-  if (data?.apiKey && data.apiKey !== cfg.apiKey) {
-    cfg.apiKey = data.apiKey;
-    lsSet(LS_CFG, cfg);
+  const remote = data || {}, push = {};
+  let changed = false;
+  if (cfg.apiKeyDirty || (!remote.apiKey && cfg.apiKey)) {
+    push.apiKey = cfg.apiKey;
+  } else if (remote.apiKey && remote.apiKey !== cfg.apiKey) {
+    cfg.apiKey = remote.apiKey;
+    changed = true;
     if (!$("#dlgSettings").open) sform.apiKey.value = cfg.apiKey;
-  } else if (!data?.apiKey && cfg.apiKey) {
-    cfg.apiKeyDirty = true;
-    return syncConfig();
   }
+  const remoteHide = remote.hideDone && typeof remote.hideDone === "object" ? remote.hideDone : null;
+  const localAt = cfg.hideDoneAt || "", remoteAt = remote.hideDoneAt || "";
+  if (!remoteHide || (cfg.hideDoneDirty && localAt >= remoteAt)) {
+    push.hideDone = Object.fromEntries(Object.keys(CATS).map((k) => [k, doneHidden(k)]));
+    push.hideDoneAt = localAt || now();
+    if (!cfg.hideDoneAt) { cfg.hideDoneAt = push.hideDoneAt; changed = true; }
+  } else if (remoteAt > localAt || JSON.stringify(remoteHide) !== JSON.stringify(cfg.hideDone)) {
+    // 别的设备改得更晚：用它的（本机较早的改动作废）
+    cfg.hideDone = { ...remoteHide };
+    cfg.hideDoneAt = remoteAt;
+    cfg.hideDoneDirty = false;
+    changed = true;
+    render();
+  }
+  if (Object.keys(push).length) {
+    const { error: setError } = await sb.rpc("mc_set_config", { p_pass: cfg.syncPass, p_data: push });
+    if (setError) throw setError;
+    if (push.apiKey !== undefined) cfg.apiKeyDirty = false;
+    if (push.hideDone) cfg.hideDoneDirty = false;
+    changed = true;
+  }
+  if (changed) lsSet(LS_CFG, cfg);
 }
 
 let syncing = null, syncAgain = false, syncTimer;

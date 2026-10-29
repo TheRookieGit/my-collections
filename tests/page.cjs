@@ -40,7 +40,8 @@ w.createClient = () => ({
     if (name === 'mc_fulfill_pull') return { data: fulfillRows, error: null };
     if (name === 'mc_agent_list') return { data: [{ id: 'a1', name: '书屿 Windows', app: 'shuyu', createdAt: ts, lastSeen: null, revoked: false }], error: null };
     if (name === 'mc_agent_create') return { data: { id: 'a2', token: 'mch_' + '0'.repeat(48), app: args.p_app, name: 'x' }, error: null };
-    if (name === 'mc_get_config') return { data: config, error: null };
+    if (name === 'mc_get_config') return { data: structuredClone(config), error: null };
+    if (name === 'mc_set_config') { Object.assign(config, args.p_data); return { data: null, error: null }; }
     return { data: null, error: null };
   },
   functions: { invoke: async () => ({}) },
@@ -176,6 +177,24 @@ const tick = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   assert.match($('#pairCode').textContent, /mch_0{48}/);
   assert.ok($('[name="hide_novel"]').checked && !$('[name="hide_movie"]').checked);
   console.log('PASS settings: devices listed and paired, offline Windows reported, done hidden per category');
+
+  // Which categories hide 「已实现」 is shared by every device: this one's goes up first, a later change elsewhere wins.
+  assert.equal(config.hideDone?.novel, true, 'the first sync uploads this device\'s choice');
+  assert.ok(config.hideDoneAt);
+  $('[name="hide_novel"]').checked = false; $('[name="hide_coupon"]').checked = true;
+  $('#settingsForm').dispatchEvent(new w.Event('submit', { cancelable: true })); await tick(200);
+  assert.equal(config.hideDone.novel, false); assert.equal(config.hideDone.coupon, true);
+  const mine = config.hideDoneAt;
+  $('#dlgSettings').close();
+  assert.ok(!$('[data-id="c1"] [data-act="done"]') && $('[data-id="n1"] [data-act="done"]'), 'applied here at once');
+  config.hideDone = Object.fromEntries(Object.keys(config.hideDone).map((k) => [k, k === 'restaurant']));
+  config.hideDoneAt = '2099-01-01T00:00:00.000Z';
+  await w.eval('sync()'); await tick(100);
+  assert.ok($('[data-id="c1"] [data-act="done"]') && $('[data-id="n1"] [data-act="done"]'), 'another device\'s later change is taken');
+  assert.equal(JSON.parse(w.localStorage.getItem('mc.config.v1')).hideDone.restaurant, true);
+  assert.ok(mine < config.hideDoneAt && config.hideDoneAt === '2099-01-01T00:00:00.000Z', 'the older choice here is not pushed over it');
+  console.log('PASS the categories hiding 「已实现」 sync across devices, newer wins');
+  $('#btnSettings').click(); await tick(100);
 
   // The Shuyu backend: sign in to Shuyu first, then a Quark QR code.
   const calls = [];
