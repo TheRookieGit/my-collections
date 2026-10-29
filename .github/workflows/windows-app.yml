@@ -23,13 +23,22 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install build tools
-        run: python -m pip install pyinstaller pillow
+        run: python -m pip install pyinstaller pillow pystray
       - name: Run tests
         run: python -m unittest tests.test_desktop
       - name: Make the icon
         run: python -c "from PIL import Image; Image.open('apple-touch-icon.png').save('wishlist.ico', sizes=[(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)])"
       - name: Build
-        run: pyinstaller --noconfirm --clean --onefile --windowed --name MyCollections --icon wishlist.ico desktop/wishlist_app.py
+        run: pyinstaller --noconfirm --clean --onefile --windowed --name MyCollections --icon wishlist.ico --add-data "apple-touch-icon.png;." desktop/wishlist_app.py
+      - name: Check the tray starts and a second copy leaves it alone
+        shell: pwsh
+        run: |
+          $app = Start-Process dist\MyCollections.exe -PassThru -ArgumentList '--minimized'
+          Start-Sleep 6
+          if ($app.HasExited) { throw "Tray app exited with code $($app.ExitCode)" }
+          $second = Start-Process dist\MyCollections.exe -PassThru -ArgumentList '--minimized'
+          if (-not $second.WaitForExit(15000)) { throw 'A second copy did not leave' }
+          Stop-Process $app -Force
       - name: Package
         shell: pwsh
         run: |

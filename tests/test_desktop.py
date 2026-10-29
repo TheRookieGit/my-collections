@@ -30,9 +30,16 @@ class WindowAppTests(unittest.TestCase):
         command = wishlist_app.window_command(Path('C:/chrome.exe'))
         self.assertEqual(command[1],'--app='+wishlist_app.URL)
         self.assertFalse(any(arg.startswith('--user-data-dir') for arg in command),'same localStorage as the browser')
-        with patch.object(wishlist_app,'find_browser',return_value=None),patch('webbrowser.open') as opened:
+
+    def test_a_second_copy_only_opens_the_page(self):
+        with patch.object(wishlist_app,'first_instance',return_value=False),patch.object(wishlist_app,'find_browser',return_value=None),\
+             patch('webbrowser.open') as opened:
             wishlist_app.main(['#add=abc'])
-        opened.assert_called_once_with(wishlist_app.URL+'#add=abc')
+            opened.assert_called_once_with(wishlist_app.URL+'#add=abc')
+            wishlist_app.main(['--minimized'])
+            self.assertEqual(opened.call_count,1,'starting with Windows opens no window')
+        self.assertTrue(wishlist_app.launch_command().endswith('--minimized'))
+        self.assertTrue(wishlist_app.ICON.is_file())
 
 
 if __name__=='__main__':

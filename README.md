@@ -4,7 +4,7 @@
 
 在线地址：https://therookiegit.github.io/my-collections/
 
-**Windows 窗口版**：从 [Releases → 我的心愿单 Windows 版（最新）](https://github.com/TheRookieGit/my-collections/releases/tag/app-latest) 下载 `MyCollections-windows.zip`，解压后双击 **我的心愿单.exe**，心愿单会在一个没有标签页和地址栏的单独窗口里打开，可以固定到任务栏。它用的是 Chrome（没有就用 Edge）平时的配置，所以同步密码、已有的收藏、网盘登录都和浏览器里一样，不用重新填。网页本身总是最新的，这个程序不需要更新。
+**Windows 窗口版**：从 [Releases → 我的心愿单 Windows 版（最新）](https://github.com/TheRookieGit/my-collections/releases/tag/app-latest) 下载 `MyCollections-windows.zip`，解压后双击 **我的心愿单.exe**，心愿单会在一个没有标签页和地址栏的单独窗口里打开，可以固定到任务栏。它用的是 Chrome（没有就用 Edge）平时的配置，所以同步密码、已有的收藏、网盘登录都和浏览器里一样，不用重新填。网页本身总是最新的，这个程序不需要更新。它和书屿、Plexus 一样在系统托盘里有图标：关掉窗口后点托盘图标就能再打开，右键可以设「开机自动启动」或退出。
 
 ## 功能
 - 9 个分类，每条收藏自动记录收藏时间（可修改）
