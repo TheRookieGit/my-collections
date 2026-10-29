@@ -8,17 +8,20 @@ const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: fa
 
 // ---------- 分类定义 ----------
 // fulfiller：哪个应用会自动回报「已拥有」；links：可以记下载链接，送到那个应用去下载
+// hue：分类的颜色；en：封面上的英文名；icon：线条图标（24×24 的 SVG 路径）
 const CATS = {
-  novel:      { name: "小说",     hue: "#A0583C", fields: [{ key: "author", label: "作者" }], fulfiller: "shuyu", links: true },
-  movie:      { name: "电影",     hue: "#3E5C76", fields: [{ key: "year", label: "年份" }], fulfiller: "plexus", links: true },
-  tv:         { name: "电视剧",   hue: "#5D6A92", fields: [{ key: "year", label: "年份" }], fulfiller: "plexus", links: true },
-  game:       { name: "游戏",     hue: "#6E5A92", fields: [{ key: "release", label: "发售" }], fulfiller: "steamless" },
-  coupon:     { name: "Coupon",   hue: "#A88433", fields: [{ key: "store", label: "商家" }, { key: "code", label: "券码" }, { key: "expiry", label: "到期日", type: "date" }] },
-  restaurant: { name: "餐厅",     hue: "#A4473F", fields: [{ key: "cuisine", label: "菜系" }, { key: "address", label: "地址" }] },
-  tool:       { name: "工具",     hue: "#4D6E5E", fields: [{ key: "platform", label: "平台" }] },
-  place:      { name: "想去玩",   hue: "#2F7773", fields: [{ key: "location", label: "位置" }] },
-  grocery:    { name: "超市购物", hue: "#7C8048", fields: [{ key: "store", label: "超市" }, { key: "quantity", label: "数量" }] },
+  novel:      { name: "小说",     en: "Novel",      hue: "#8A4B2F", icon: '<path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5z"/><path d="M20 5.5A1.5 1.5 0 0 0 18.5 4H13v16h5.5a1.5 1.5 0 0 0 1.5-1.5z"/><path d="M7 8h1.5M15.5 8H17"/>', fields: [{ key: "author", label: "作者" }], fulfiller: "shuyu", links: true },
+  movie:      { name: "电影",     en: "Cinema",     hue: "#B8392F", icon: '<rect x="3" y="7" width="18" height="13" rx="1.5"/><path d="m3 7 3.5-3.5L9 6l2.5-2.5L14 6l2.5-2.5L20 7"/><path d="M3 11h18"/>', fields: [{ key: "year", label: "年份" }], fulfiller: "plexus", links: true },
+  tv:         { name: "电视剧",   en: "Series",     hue: "#3557A8", icon: '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="m9 2 3 4 3-4M8 21h8"/>', fields: [{ key: "year", label: "年份" }], fulfiller: "plexus", links: true },
+  game:       { name: "游戏",     en: "Games",      hue: "#6A44D4", icon: '<path d="M7 8h10a4 4 0 0 1 3.9 4.9l-1 4.3a2.3 2.3 0 0 1-4 .8L14 16h-4l-1.9 2a2.3 2.3 0 0 1-4-.8l-1-4.3A4 4 0 0 1 7 8z"/><path d="M8 11v3M6.5 12.5h3M15.5 12h.01M17.5 13.5h.01"/>', fields: [{ key: "release", label: "发售" }], fulfiller: "steamless" },
+  coupon:     { name: "Coupon",   en: "Coupon",     hue: "#C08A1E", icon: '<path d="M3 8a2 2 0 0 0 2-2h14a2 2 0 0 0 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 0-2 2H5a2 2 0 0 0-2-2v-2a2 2 0 0 0 0-4z"/><path d="M14 6v12" stroke-dasharray="1.5 2"/>', fields: [{ key: "store", label: "商家" }, { key: "code", label: "券码" }, { key: "expiry", label: "到期日", type: "date" }] },
+  restaurant: { name: "餐厅",     en: "Dining",     hue: "#C0502E", icon: '<path d="M6 3v7a2 2 0 0 0 4 0V3M8 3v18"/><path d="M17 21V3c-2 1.5-3 4-3 7s1 4 3 4"/>', fields: [{ key: "cuisine", label: "菜系" }, { key: "address", label: "地址" }] },
+  tool:       { name: "工具",     en: "Toolkit",    hue: "#3E5566", icon: '<path d="M14.5 6.5a4 4 0 0 1 5-5l-2.5 2.5.5 2.5 2.5.5 2.5-2.5a4 4 0 0 1-5 5L8 20a2.1 2.1 0 0 1-3-3z"/>', fields: [{ key: "platform", label: "平台" }] },
+  place:      { name: "想去玩",   en: "Journeys",   hue: "#1F8A80", icon: '<path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/>', fields: [{ key: "location", label: "位置" }] },
+  grocery:    { name: "超市购物", en: "Pantry",     hue: "#5E8A2E", icon: '<path d="M5 8h14l-1.2 11.1a2 2 0 0 1-2 1.9H8.2a2 2 0 0 1-2-1.9z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8"/>', fields: [{ key: "store", label: "超市" }, { key: "quantity", label: "数量" }] },
 };
+const ALL_ICON = '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>';
+const svgIcon = (paths, cls = "") => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
 const EXTRA_KEYS = [...new Set(Object.values(CATS).flatMap((c) => c.fields.map((f) => f.key)))];
 // 小说的类型，和书屿想看清单的一样：按书名、文件夹名还是压缩包名去匹配
 const KINDS = { novel: "小说文件", folder: "文件夹", zip: "ZIP 压缩包" };
@@ -91,6 +94,7 @@ function upsert(item) {
 
 // ---------- 工具 ----------
 const $ = (s) => document.querySelector(s);
+const $$ = (s) => [...document.querySelectorAll(s)];
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const isUrl = (s) => /^https?:\/\//i.test(s || "") || /^magnet:/i.test(s || "");
 const fmtTime = (iso) => {
@@ -124,9 +128,12 @@ function renderTabs() {
   const total = wanted.length;
   const owned = live().filter((i) => stateOf(i) === "owned").length;
   $("#summary").textContent = `${total} 个心愿${owned ? ` · ${owned} 个已拥有` : ""}`;
-  const tabs = [["all", "全部", "", total], ...Object.entries(CATS).map(([k, c]) => [k, c.name, c.hue, counts[k] || 0])];
+  const tabs = [["all", "全部", "All", "", ALL_ICON, total], ...Object.entries(CATS).map(([k, c]) => [k, c.name, c.en, c.hue, c.icon, counts[k] || 0])];
   $("#catTabs").innerHTML = tabs
-    .map(([k, n, hue, c]) => `<button data-cat="${k}" class="${ui.cat === k ? "active" : ""}"${hue ? ` style="--c:${hue}"` : ""}>${hue ? '<i class="dot-c"></i>' : ""}${n}<small>${c || ""}</small></button>`)
+    .map(([k, n, en, hue, icon, c]) => `<button data-cat="${k}" class="tile ${ui.cat === k ? "active" : ""} ${c ? "" : "zero"}"${hue ? ` style="--c:${hue}"` : ""}>
+      <span class="tile-icon">${svgIcon(icon)}</span>
+      <span class="tile-text"><span class="tile-name">${n}</span><span class="tile-en">${en}</span></span>
+      <small>${c}</small></button>`)
     .join("");
 }
 
@@ -153,10 +160,30 @@ function renderList() {
     return;
   }
   $("#list").innerHTML = list.map(cardHtml).join("");
+  watchCovers();
 }
 
+// 封面上标题下面那行：每个分类最想一眼看到的
+function coverSub(i) {
+  const x = i.extra || {};
+  switch (i.category) {
+    case "novel": return x.author ? `${x.author} 著` : "";
+    case "movie": case "tv": return i.aliases[0] || "";
+    case "game": return x.release || i.aliases[0] || "";
+    case "coupon": return [x.store, x.expiry && `有效期至 ${x.expiry}`].filter(Boolean).join(" · ");
+    case "restaurant": return [x.cuisine, x.address].filter(Boolean).join(" · ");
+    case "tool": return x.platform || "";
+    case "place": return x.location || "";
+    case "grocery": return [x.store, x.quantity].filter(Boolean).join(" · ");
+    default: return "";
+  }
+}
+
+// 封面图：Steam 游戏用商店横幅，截图收藏的用原截图（滚动到时才加载），其余用分类自己的纹样
+const steamHeader = (i) => i.externalIds?.steamAppId ? `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${Number(i.externalIds.steamAppId)}/header.jpg` : "";
+
 function cardHtml(i) {
-  const c = CATS[i.category] || { name: i.category, hue: "#888", fields: [] };
+  const c = CATS[i.category] || { name: i.category, en: "", hue: "#888", icon: ALL_ICON, fields: [] };
   const ext = (href, text) => `<a href="${esc(href)}" target="_blank" rel="noopener">${text}</a>`;
   const row = (k, v) => `<div class="meta"><span class="k">${k}</span><span class="v">${v}</span></div>`;
   const extras = c.fields
@@ -178,21 +205,54 @@ function cardHtml(i) {
   const send = app?.send && i.links.length && !i.done && !owned
     ? `<a class="send" href="${app.send}#links=${encodeURIComponent(i.links.join("\n"))}" target="_blank" rel="noopener">送到${app.name}下载 →</a>` : "";
   const ro = readOnly(i);
+  const sub = coverSub(i);
+  const steam = steamHeader(i);
+  const year = (i.category === "movie" || i.category === "tv") && /^\d{4}$/.test(i.extra?.year || "") ? `<span class="cv-year">${i.extra.year}</span>` : "";
+  const code = i.category === "coupon" && i.extra?.code ? `<span class="cv-code">${esc(i.extra.code)}</span>` : "";
   return `
-  <article class="card ${stateOf(i)}" data-id="${i.id}" style="--c:${c.hue}">
-    <div class="card-head">
-      <span class="badge"><i class="dot-c"></i>${c.name}</span>
-      <div class="stars" ${ro ? "" : 'data-act="rate" title="点击修改等级"'}>${[1, 2, 3, 4, 5].map((n) => `<span class="${n <= (i.rating || 0) ? "on" : ""}" ${ro ? "" : `data-n="${n}"`}>★</span>`).join("")}</div>
+  <article class="card ${stateOf(i)}" data-id="${i.id}" data-cat="${esc(i.category)}" style="--c:${c.hue}">
+    <div class="cover cv-${esc(i.category)}${steam ? " has-img" : ""}"${!steam && i.shots?.length ? ` data-shot="${esc(i.shots[0])}"` : ""}>
+      ${steam ? `<img class="cv-img" src="${steam}" alt="" loading="lazy" onerror="this.parentNode.classList.remove('has-img');this.remove()">` : ""}
+      ${svgIcon(c.icon, "cv-mark")}${year}${code}
+      <div class="cv-top">
+        <span class="cv-cat">${svgIcon(c.icon)}${c.name}</span>
+        <div class="stars" ${ro ? "" : 'data-act="rate" title="点击修改等级"'}>${[1, 2, 3, 4, 5].map((n) => `<span class="${n <= (i.rating || 0) ? "on" : ""}" ${ro ? "" : `data-n="${n}"`}>★</span>`).join("")}</div>
+      </div>
+      <div class="cv-text">
+        <h3 class="card-title">${esc(i.title)}</h3>
+        ${sub ? `<p class="cv-sub">${esc(sub)}</p>` : ""}
+      </div>
     </div>
-    <h3 class="card-title">${esc(i.title)}</h3>
-    ${note}${metas ? `<div class="metas">${metas}</div>` : ""}
-    ${owned}${send}
-    <div class="card-foot">
-      <span class="time">${i.done ? `实现于 ${fmtTime(i.doneAt).slice(0, 10)}` : `收藏于 ${fmtTime(i.createdAt).slice(0, 10)}`}</span>
-      ${ro ? `<span class="from">来自 Steamless</span>` : `<button data-act="edit" class="text-btn">编辑</button>`}
-      ${ro || (doneHidden(i.category) && !i.done) ? "" : `<button data-act="done" class="btn-done ${i.done ? "is-done" : ""}">${i.done ? "撤回" : "已实现"}</button>`}
+    <div class="card-body">
+      ${note}${metas ? `<div class="metas">${metas}</div>` : ""}
+      ${owned}${send}
+      <div class="card-foot">
+        <span class="time">${i.done ? `实现于 ${fmtTime(i.doneAt).slice(0, 10)}` : `收藏于 ${fmtTime(i.createdAt).slice(0, 10)}`}</span>
+        ${ro ? `<span class="from">来自 Steamless</span>` : `<button data-act="edit" class="text-btn">编辑</button>`}
+        ${ro || (doneHidden(i.category) && !i.done) ? "" : `<button data-act="done" class="btn-done ${i.done ? "is-done" : ""}">${i.done ? "撤回" : "已实现"}</button>`}
+      </div>
     </div>
   </article>`;
+}
+
+// 截图收藏的封面：卡片滚动到眼前才去读原截图（本机没有时从云端下载一次，之后存在本机）
+const coverSeen = "IntersectionObserver" in window ? new IntersectionObserver((entries) => {
+  for (const e of entries) {
+    if (!e.isIntersecting) continue;
+    coverSeen.unobserve(e.target);
+    const box = e.target;
+    loadShot(box.dataset.shot).then((src) => {
+      if (!src || !box.isConnected) return;
+      const img = new Image();
+      img.className = "cv-img";
+      img.alt = "";
+      img.onload = () => { box.prepend(img); box.classList.add("has-img", "is-shot"); };
+      img.src = src;
+    }).catch(() => {});
+  }
+}, { rootMargin: "300px" }) : null;
+function watchCovers() {
+  if (coverSeen) for (const box of $$("#list .cover[data-shot]")) coverSeen.observe(box);
 }
 
 // 链接在卡片上只显示域名：pan.quark.cn、store.steampowered.com
