@@ -12,6 +12,7 @@
 | [002_wish_hub.sql](migrations/002_wish_hub.sql) | 心愿中枢：接口版本、密码失败次数限制、已配对的设备、已拥有记录、应用拉取和添加心愿 |
 | [003_shots.sql](migrations/003_shots.sql) | 原截图双向同步：已配对的应用凭设备令牌上传、读取心愿的原截图 |
 | [004_foodcollection.sql](migrations/004_foodcollection.sql) | 可以给 FoodCollection（Mac 上的「今天吃什么」）配对：只读写「餐厅」，吃过的店回报「已拥有」 |
+| [005_agent_delete.sql](migrations/005_agent_delete.sql) | 已配对的设备里可以删除已吊销的记录 |
 
 想知道已经执行到哪一个，运行：
 

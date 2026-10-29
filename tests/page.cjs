@@ -29,6 +29,8 @@ const fulfillRows = [{ itemId: 'n2', app: 'shuyu', ref: 'a.txt', url: 'https://t
 // Screenshot recognition answers whatever the test sets in `reply`; the images never reach a canvas.
 let reply = [];
 const config = {};
+const agents = [{ id: 'a1', name: '书屿 Windows', app: 'shuyu', createdAt: ts, lastSeen: null, revoked: false },
+  { id: 'a0', name: 'foodcollection', app: 'foodcollection', createdAt: ts, lastSeen: null, revoked: true }];
 w.Anthropic = class { constructor() { this.messages = { create: async () => ({ stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify({ items: reply }) }] }) }; } };
 w.createImageBitmap = async () => ({ width: 10, height: 10 });
 w.HTMLCanvasElement.prototype.getContext = () => ({ drawImage() {} });
@@ -38,7 +40,8 @@ w.createClient = () => ({
     rpcs.push([name, args]);
     if (name === 'mc_pull') return { data: [], error: null };
     if (name === 'mc_fulfill_pull') return { data: fulfillRows, error: null };
-    if (name === 'mc_agent_list') return { data: [{ id: 'a1', name: '书屿 Windows', app: 'shuyu', createdAt: ts, lastSeen: null, revoked: false }], error: null };
+    if (name === 'mc_agent_list') return { data: agents.filter((a) => !a.deleted), error: null };
+    if (name === 'mc_agent_delete') { agents.find((a) => a.id === args.p_id).deleted = true; return { data: null, error: null }; }
     if (name === 'mc_agent_create' && args.p_app === 'foodcollection') return { data: null, error: { code: '22023', message: 'unknown app' } };
     if (name === 'mc_agent_create') return { data: { id: 'a2', token: 'mch_' + '0'.repeat(48), app: args.p_app, name: 'x' }, error: null };
     if (name === 'mc_get_config') return { data: structuredClone(config), error: null };
@@ -181,6 +184,12 @@ const tick = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   $('#pairApp').value = 'foodcollection'; $('#btnPair').click(); await tick();
   assert.match($('#pairCode').textContent, /没能生成配对码：云端还没执行最新的迁移（004_foodcollection\.sql）/);
   $('#pairApp').value = 'shuyu';
+  // A revoked pairing can be deleted from the list; one in use only revoked.
+  assert.match($('#agentList').textContent, /foodcollection · FoodCollection/);
+  assert.ok(!$('[data-delete="a1"]') && $('[data-revoke="a1"]'));
+  $('[data-delete="a0"]').click(); await tick();
+  assert.equal(rpcs.filter((r) => r[0] === 'mc_agent_delete').at(-1)[1].p_id, 'a0');
+  assert.doesNotMatch($('#agentList').textContent, /foodcollection/);
   console.log('PASS settings: devices listed and paired, offline Windows reported, done hidden per category');
 
   // Which categories hide 「已实现」 is shared by every device: this one's goes up first, a later change elsewhere wins.

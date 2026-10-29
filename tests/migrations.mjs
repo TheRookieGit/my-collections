@@ -12,10 +12,10 @@ await db.exec(`create schema extensions; create role anon; create role authentic
   -- Supabase grants new tables and sequences to anon by default; the migrations must take that back.
   alter default privileges in schema public grant all on tables to anon, authenticated;
   alter default privileges in schema public grant all on sequences to anon, authenticated;`);
-const files = ['001_base.sql', '002_wish_hub.sql', '003_shots.sql', '004_foodcollection.sql'];
+const files = ['001_base.sql', '002_wish_hub.sql', '003_shots.sql', '004_foodcollection.sql', '005_agent_delete.sql'];
 for (let round = 0; round < 2; round++) for (const f of files) await db.exec(readFileSync(new URL(f, dir), 'utf8'));
 console.log('PASS migrations run twice');
-assert.deepEqual((await db.query('select name from public.mc_migrations order by name')).rows.map((r) => r.name), ['001_base', '002_wish_hub', '003_shots', '004_foodcollection']);
+assert.deepEqual((await db.query('select name from public.mc_migrations order by name')).rows.map((r) => r.name), ['001_base', '002_wish_hub', '003_shots', '004_foodcollection', '005_agent_delete']);
 await db.exec(`insert into public.mc_secret (id, hash) values (1, extensions.crypt('pw', extensions.gen_salt('bf', 4)))`);
 
 const anon = async (sql, params) => { await db.exec('set role anon'); try { return (await db.query(sql, params)).rows; } finally { await db.exec('reset role'); } };
@@ -100,7 +100,13 @@ await anon("select public.mc_agent_revoke('pw', $1)", [agent.id]);
 await fails('select public.mc_wishes($1, $2, $3)', [agent.token, null, null], '28000');
 assert.ok((await one("select public.mc_agent_list('pw')")).find((a) => a.id === agent.id).revoked);
 assert.ok((await one("select public.mc_agent_list('pw')")).find((a) => a.id === plexus.id).lastSeen, 'last seen is recorded');
-console.log('PASS revoked devices are refused');
+// Only a revoked pairing can be deleted.
+const before = (await one("select public.mc_agent_list('pw')")).length;
+await anon("select public.mc_agent_delete('pw', $1)", [plexus.id]);
+assert.equal((await one("select public.mc_agent_list('pw')")).length, before, 'a device in use is not deleted');
+await anon("select public.mc_agent_delete('pw', $1)", [agent.id]);
+assert.ok(!(await one("select public.mc_agent_list('pw')")).some((a) => a.id === agent.id));
+console.log('PASS revoked devices are refused, and only revoked ones can be deleted');
 
 for (let n = 0; n < 9; n++) await fails("select public.mc_pull('wrong')", [], '28P01');
 await one("select public.mc_pull('pw')");

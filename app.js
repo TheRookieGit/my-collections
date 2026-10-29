@@ -927,7 +927,7 @@ async function loadAgents() {
   list.innerHTML = data.length ? data.map((a) => `
     <li class="${a.revoked ? "revoked" : ""}"><span><b>${esc(a.name)}</b> · ${esc(APPS[a.app]?.name || a.app)}<br>
       <span class="muted small">${a.revoked ? "已吊销" : fmtSeen(a.lastSeen)}</span></span>
-      ${a.revoked ? "" : `<button type="button" class="ghost" data-revoke="${esc(a.id)}">吊销</button>`}</li>`).join("")
+      ${a.revoked ? `<button type="button" class="ghost" data-delete="${esc(a.id)}">删除</button>` : `<button type="button" class="ghost" data-revoke="${esc(a.id)}">吊销</button>`}</li>`).join("")
     : `<li class="muted small">还没有配对的设备。</li>`;
 }
 $("#btnPair").addEventListener("click", async () => {
@@ -952,6 +952,13 @@ $("#pairCode").addEventListener("click", async (e) => {
   try { await navigator.clipboard.writeText($("#pairToken").textContent); toast("已复制配对码"); } catch { toast("复制失败，请手动选中复制"); }
 });
 $("#agentList").addEventListener("click", async (e) => {
+  // 已吊销的记录可以删掉，列表里不再显示
+  const del = e.target.closest("[data-delete]");
+  if (del) {
+    const { error } = await sb.rpc("mc_agent_delete", { p_pass: cfg.syncPass, p_id: del.dataset.delete });
+    if (error) return toast(syncError(error));
+    return loadAgents();
+  }
   const b = e.target.closest("[data-revoke]");
   if (!b || !confirm("吊销后这台设备不能再读取和回报心愿，要重新配对才行。确定吊销吗？")) return;
   const { error } = await sb.rpc("mc_agent_revoke", { p_pass: cfg.syncPass, p_id: b.dataset.revoke });
