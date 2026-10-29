@@ -13,7 +13,7 @@ const CATS = {
   novel:      { name: "小说",     en: "Novel",      hue: "#8A4B2F", icon: '<path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5z"/><path d="M20 5.5A1.5 1.5 0 0 0 18.5 4H13v16h5.5a1.5 1.5 0 0 0 1.5-1.5z"/><path d="M7 8h1.5M15.5 8H17"/>', fields: [{ key: "author", label: "作者" }], fulfiller: "shuyu", links: true },
   movie:      { name: "电影",     en: "Cinema",     hue: "#B8392F", icon: '<rect x="3" y="7" width="18" height="13" rx="1.5"/><path d="m3 7 3.5-3.5L9 6l2.5-2.5L14 6l2.5-2.5L20 7"/><path d="M3 11h18"/>', fields: [{ key: "year", label: "年份" }], fulfiller: "plexus", links: true },
   tv:         { name: "电视剧",   en: "Series",     hue: "#3557A8", icon: '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="m9 2 3 4 3-4M8 21h8"/>', fields: [{ key: "year", label: "年份" }], fulfiller: "plexus", links: true },
-  game:       { name: "游戏",     en: "Games",      hue: "#6A44D4", icon: '<path d="M7 8h10a4 4 0 0 1 3.9 4.9l-1 4.3a2.3 2.3 0 0 1-4 .8L14 16h-4l-1.9 2a2.3 2.3 0 0 1-4-.8l-1-4.3A4 4 0 0 1 7 8z"/><path d="M8 11v3M6.5 12.5h3M15.5 12h.01M17.5 13.5h.01"/>', fields: [{ key: "release", label: "发售" }], fulfiller: "steamless" },
+  game:       { name: "游戏",     en: "Games",      hue: "#6A44D4", icon: '<path d="M7 8h10a4 4 0 0 1 3.9 4.9l-1 4.3a2.3 2.3 0 0 1-4 .8L14 16h-4l-1.9 2a2.3 2.3 0 0 1-4-.8l-1-4.3A4 4 0 0 1 7 8z"/><path d="M8 11v3M6.5 12.5h3M15.5 12h.01M17.5 13.5h.01"/>', fields: [{ key: "release", label: "发售" }], fulfiller: "steamless", links: true },
   coupon:     { name: "Coupon",   en: "Coupon",     hue: "#C08A1E", icon: '<path d="M3 8a2 2 0 0 0 2-2h14a2 2 0 0 0 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 0-2 2H5a2 2 0 0 0-2-2v-2a2 2 0 0 0 0-4z"/><path d="M14 6v12" stroke-dasharray="1.5 2"/>', fields: [{ key: "store", label: "商家" }, { key: "code", label: "券码" }, { key: "expiry", label: "到期日", type: "date" }] },
   restaurant: { name: "餐厅",     en: "Dining",     hue: "#C0502E", icon: '<path d="M6 3v7a2 2 0 0 0 4 0V3M8 3v18"/><path d="M17 21V3c-2 1.5-3 4-3 7s1 4 3 4"/>', fields: [{ key: "cuisine", label: "菜系" }, { key: "address", label: "地址" }] },
   tool:       { name: "工具",     en: "Toolkit",    hue: "#3E5566", icon: '<path d="M14.5 6.5a4 4 0 0 1 5-5l-2.5 2.5.5 2.5 2.5.5 2.5-2.5a4 4 0 0 1-5 5L8 20a2.1 2.1 0 0 1-3-3z"/>', fields: [{ key: "platform", label: "平台" }] },
@@ -29,7 +29,8 @@ const KINDS = { novel: "小说文件", folder: "文件夹", zip: "ZIP 压缩包"
 const APPS = {
   shuyu:     { name: "书屿",      send: "https://therookiegit.github.io/shuyu/lite/" },
   plexus:    { name: "Plexus",    send: "https://therookiegit.github.io/plexus/downloads.html" },
-  steamless: { name: "Steamless" },
+  // Steamless 是电脑上的桌面应用：链接交给本机的 Steamless（它没开着的话打不开）
+  steamless: { name: "Steamless", send: "http://localhost:5174/" },
 };
 // 默认隐藏「已实现」按钮的分类：小说下载到书屿就算数了
 const HIDE_DONE = { novel: true };
