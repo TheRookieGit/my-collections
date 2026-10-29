@@ -268,7 +268,7 @@ function detailHtml(i) {
       ${i.note ? `<p class="detail-note">${esc(i.note)}</p>` : ""}
       ${metas ? `<div class="metas">${metas}</div>` : ""}
       ${owned}${send}
-      ${i.shots?.length ? `<div class="detail-section"><h4>原截图</h4><div class="detail-shots" data-shots>${i.shots.map((id) => `<button type="button" class="shot-thumb" data-act="shots" data-shot="${esc(id)}"></button>`).join("")}</div></div>` : ""}
+      <div class="detail-section"><h4>原截图</h4><div class="detail-shots" data-shots>${(i.shots || []).map((id) => `<span class="shot-wrap"><button type="button" class="shot-thumb" data-act="shots" data-shot="${esc(id)}" title="查看原图"></button><button type="button" class="shot-remove" data-act="unshot" data-id="${esc(id)}" title="删掉这张截图" aria-label="删掉这张截图">${svgIcon('<path d="M6 6l12 12M18 6 6 18"/>')}</button></span>`).join("")}<button type="button" class="shot-add" data-act="addshot" title="选择图片，或者打开详情时直接粘贴">${svgIcon('<path d="M12 5v14M5 12h14"/>')}<span>添加截图</span></button></div></div>
       <dl class="detail-times">${times.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl>
       <div class="dlg-actions">
         ${doneBtn}
@@ -335,6 +335,10 @@ function onItemClick(e, box) {
   const act = actor?.dataset.act;
   if (act === "edit") { $("#dlgDetail").close(); openEdit(item); }
   else if (act === "shots") openShots(item);
+  else if (act === "addshot") { shotTarget = item.id; $("#shotAddInput").click(); }
+  else if (act === "unshot") {
+    if (confirm("删掉这张原截图？连接了的应用里也会一起删掉。")) upsert({ ...item, shots: (item.shots || []).filter((id) => id !== actor.dataset.id) });
+  }
   else if (act === "reject") rejectFulfill(item, actor.dataset.app);
   else if (act === "done") {
     const done = !item.done;
@@ -530,6 +534,21 @@ async function storeShots(shots) {
   for (const s of shots) {
     await shotDb.put(s);
     await shotDb.addPending(s.id);
+  }
+}
+
+// 给已有的条目补截图：存进本机，同步时上传，条目里记下 id；配对的应用会跟着拿到
+let shotTarget = null;
+async function addShots(itemId, files) {
+  const item = items.find((i) => i.id === itemId);
+  if (!item || !files.length) return;
+  try {
+    const shots = await Promise.all(files.map(async (f) => ({ id: uid(), data: (await imageToBase64(f, ARCHIVE_SIDE, ARCHIVE_QUALITY)).dataUrl })));
+    await storeShots(shots);
+    upsert({ ...item, shots: [...(item.shots || []), ...shots.map((s) => s.id)] });
+    toast(`已添加 ${shots.length} 张截图`);
+  } catch (err) {
+    toast("截图保存失败：" + (err.message || err));
   }
 }
 
@@ -840,9 +859,15 @@ $("#shotInput").addEventListener("change", (e) => {
   recognize({ files: [...e.target.files] });
   e.target.value = "";
 });
+$("#shotAddInput").addEventListener("change", (e) => {
+  addShots(shotTarget, [...e.target.files]);
+  e.target.value = "";
+});
 document.addEventListener("paste", (e) => {
-  if (document.querySelector("dialog[open]:not(#dlgShot)")) return;
   const files = [...(e.clipboardData?.files || [])].filter((f) => f.type.startsWith("image/"));
+  // 打开详情时粘贴的图片补到这一条
+  if ($("#dlgDetail").open && !$("#dlgImg").open && files.length && !e.target.closest?.("input, textarea")) { e.preventDefault(); addShots(detailId, files); return; }
+  if (document.querySelector("dialog[open]:not(#dlgShot)")) return;
   if (files.length) { e.preventDefault(); recognize({ files }); return; }
   // 在页面空白处粘贴小红书分享文字
   const text = e.clipboardData?.getData("text") || "";

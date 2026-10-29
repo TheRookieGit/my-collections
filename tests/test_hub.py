@@ -43,7 +43,7 @@ class HubTests(unittest.TestCase):
         first = self.hub.wishes(['novel'])
         self.assertEqual([i['id'] for i in first['items']],['n1'])
         self.assertEqual(self.hub.wishes(['novel','movie'])['items'][0]['id'],'n1','only its own categories')
-        self.assertEqual(self.hub.api_version(),1)
+        self.assertEqual(self.hub.api_version(),2)
 
     def test_what_is_sent_while_offline_waits_and_goes_out_later(self):
         self.hub.pair(self.fake.token('shuyu'))
@@ -67,6 +67,35 @@ class HubTests(unittest.TestCase):
         self.assertIn('吊销',self.hub.status()['error'])
         with self.assertRaises(HubError) as caught:self.hub.wishes()
         self.assertTrue(caught.exception.revoked)
+
+    def test_screenshots_go_up_and_come_down_once(self):
+        self.hub.pair(self.fake.token('shuyu'))
+        jpeg = 'data:image/jpeg;base64,/9j/4AAQ'
+        with self.assertRaises(HubError):self.hub.add_shot('data:text/html;base64,PGI+')
+        self.fake.offline = True
+        mine = self.hub.add_shot(jpeg)
+        self.assertEqual(self.hub.shot(mine),jpeg,'kept here before it goes up')
+        self.fake.offline = False
+        self.hub.flush()
+        self.assertEqual(self.fake.images[mine],jpeg)
+        self.fake.images['shot-hub-1'] = 'data:image/png;base64,iVBO'
+        self.assertIsNone(self.hub.shot('shot-hub-1'),'not on any of its wishes')
+        self.fake.add({'id':'n1','category':'novel','title':'书','shots':['shot-hub-1'],'updatedAt':'2026-01-01T00:00:00Z'})
+        self.assertEqual(self.hub.shot('shot-hub-1'),'data:image/png;base64,iVBO')
+        self.fake.offline = True
+        self.assertEqual(self.hub.shot('shot-hub-1'),'data:image/png;base64,iVBO','fetched once, kept here')
+        with self.assertRaises(HubError):self.hub.shot('../hub.json')
+
+    def test_a_screenshot_waits_for_the_migration_while_wishes_go_on(self):
+        self.hub.pair(self.fake.token('shuyu'))
+        self.fake.version = 1
+        shot = self.hub.add_shot('data:image/jpeg;base64,/9j/')
+        self.hub.put_wish({'id':'n2','category':'novel','title':'书二','shots':[shot],'updatedAt':'2026-02-01T00:00:00Z'})
+        self.assertIn('n2',self.fake.items)
+        self.assertEqual(self.hub.status()['queued'],1)
+        self.fake.version = 2
+        self.hub.flush()
+        self.assertEqual(self.hub.status()['queued'],0);self.assertIn(shot,self.fake.images)
 
 
 if __name__=='__main__':

@@ -4,12 +4,15 @@ and report which it already has.
 The hub keeps its data in Supabase behind RPCs. An app pairs once with a device token made in the hub's settings;
 the token is kept encrypted with DPAPI in %LOCALAPPDATA%\\CollectionKit\\hub.json, one per app, beside the shared drive
 sign-ins. Nothing here may stop the app working: while the hub cannot be reached, what the app sends waits in
-hub.sqlite3 and goes out on the next flush()."""
+hub.sqlite3 and goes out on the next flush(). The wishes' original screenshots are kept in shots\ beside it once seen,
+shared by the apps on this computer."""
 from __future__ import annotations
 
 from contextlib import contextmanager
 import json
 import os
+import re
+import secrets
 from pathlib import Path
 import sqlite3
 import time
@@ -22,14 +25,17 @@ from .secret import protect_secret
 # The same public project and publishable key as the hub page (app.js); the tables are closed, only the RPCs answer.
 URL = 'https://lxicymhrzkuiqisuiotg.supabase.co'
 KEY = 'sb_publishable_KsJzV--VCz5k8WYQ-aqMLQ_rMgf-w9y'
-API_VERSION = 1  # What this code needs of the hub's migrations.
+API_VERSION = 2  # What this code needs of the hub's migrations.
+SHOT_ID = re.compile(r'^[A-Za-z0-9_-]{6,64}$')
+SHOT_LIMIT = 4_000_000  # The longest image data URL the hub takes.
 APPS = {'shuyu','plexus','steamless'}
 
 
 class HubError(Exception):
-    def __init__(self,message,revoked=False):
+    def __init__(self,message,revoked=False,waits=False):
         super().__init__(message)
         self.revoked = revoked  # The pairing was revoked or never valid: pair again.
+        self.waits = waits      # The hub lacks a newer migration: what was sent waits until it has run.
 
 
 class Offline(HubError):
@@ -57,7 +63,7 @@ def rpc(name,args,timeout=20):
     if status>=500:raise Offline(f'心愿中枢暂时不可用（HTTP {status}）。')
     code = (result or {}).get('code') if isinstance(result,dict) else None
     if code=='28000':raise HubError('配对码无效或已经被吊销，请在心愿中枢里重新生成配对码。',revoked=True)
-    if code=='PGRST202':raise HubError('心愿中枢还没执行最新的数据库迁移，请先按 supabase/README.md 执行。')
+    if code=='PGRST202':raise HubError('心愿中枢还没执行最新的数据库迁移，请先按 supabase/README.md 执行。',waits=True)
     raise HubError('心愿中枢：'+str((result or {}).get('message') if isinstance(result,dict) else status))
 
 
@@ -163,6 +169,40 @@ class Hub:
         """Report what this app has: [{itemId, ref, url, title, ownedAt}]. Queued while offline."""
         if rows:return self.send('mc_fulfill_put',{'p_rows':list(rows)})
 
+    # Screenshots --------------------------------------------------------------------------------------------------
+
+    def shot_path(self,shot_id):
+        if not SHOT_ID.match(str(shot_id or '')):raise HubError('截图编号不对。')
+        return self.folder/'shots'/shot_id
+
+    def keep_shot(self,shot_id,data):
+        path = self.shot_path(shot_id)
+        path.parent.mkdir(exist_ok=True)
+        part = path.with_name(f'{shot_id}.{os.getpid()}.part')
+        part.write_text(data,encoding='ascii')
+        os.replace(part,path)
+
+    def add_shot(self,data):
+        """Keep a screenshot (a compressed image data URL) and send it to the hub, queued while offline. The id to put in
+        the wish's shots; the wish may reach the hub before the image does."""
+        data = str(data or '')
+        if not re.match(r'^data:image/(jpeg|png|webp|gif);base64,[A-Za-z0-9+/=]+$',data):raise HubError('这不是图片。')
+        if len(data)>SHOT_LIMIT:raise HubError('图片太大了，请换一张小一点的。')
+        shot_id = 'shot-'+secrets.token_hex(10)
+        self.keep_shot(shot_id,data)
+        self.send('mc_agent_put_image',{'p_id':shot_id,'p_data':data})
+        return shot_id
+
+    def shot(self,shot_id):
+        """A screenshot as a data URL: kept here, or fetched from the hub once. None when the hub has none for this app.
+        Raises Offline when it is not kept here and the hub cannot be reached."""
+        path = self.shot_path(shot_id)
+        try:return path.read_text(encoding='ascii')
+        except OSError:pass
+        data = self.call('mc_agent_get_image',p_id=shot_id)
+        if data:self.keep_shot(shot_id,data)
+        return data
+
     def send(self,method,args):
         with self.db() as db:
             db.execute('INSERT INTO outbox (app,method,payload,created) VALUES (?,?,?,?)',(self.app,method,json.dumps(args,ensure_ascii=False),time.time()))
@@ -173,14 +213,17 @@ class Hub:
     def flush(self):
         """Send what waits, oldest first; stops at the first time the hub cannot be reached. The last reply."""
         if not self.paired:return None
-        result = None
+        result,after = None,0
         while True:
             with self.db() as db:
-                row = db.execute('SELECT id,method,payload FROM outbox WHERE app=? ORDER BY id LIMIT 1',(self.app,)).fetchone()
+                row = db.execute('SELECT id,method,payload FROM outbox WHERE app=? AND id>? ORDER BY id LIMIT 1',(self.app,after)).fetchone()
             if not row:return result
+            after = row[0]
             try:result = self.call(row[1],**json.loads(row[2]))
             except Offline:raise
             except HubError as exc:
-                # A revoked pairing keeps its queue for after pairing again; anything else would fail forever, so it goes.
+                # A revoked pairing keeps its queue for after pairing again; what needs a newer migration waits for it
+                # while the rest goes on; anything else would fail forever, so it goes.
                 if exc.revoked:raise
+                if exc.waits:continue
             with self.db() as db:db.execute('DELETE FROM outbox WHERE id=?',(row[0],))

@@ -12,17 +12,17 @@ await db.exec(`create schema extensions; create role anon; create role authentic
   -- Supabase grants new tables and sequences to anon by default; the migrations must take that back.
   alter default privileges in schema public grant all on tables to anon, authenticated;
   alter default privileges in schema public grant all on sequences to anon, authenticated;`);
-const files = ['001_base.sql', '002_wish_hub.sql'];
+const files = ['001_base.sql', '002_wish_hub.sql', '003_shots.sql'];
 for (let round = 0; round < 2; round++) for (const f of files) await db.exec(readFileSync(new URL(f, dir), 'utf8'));
 console.log('PASS migrations run twice');
-assert.deepEqual((await db.query('select name from public.mc_migrations order by name')).rows.map((r) => r.name), ['001_base', '002_wish_hub']);
+assert.deepEqual((await db.query('select name from public.mc_migrations order by name')).rows.map((r) => r.name), ['001_base', '002_wish_hub', '003_shots']);
 await db.exec(`insert into public.mc_secret (id, hash) values (1, extensions.crypt('pw', extensions.gen_salt('bf', 4)))`);
 
 const anon = async (sql, params) => { await db.exec('set role anon'); try { return (await db.query(sql, params)).rows; } finally { await db.exec('reset role'); } };
 const one = async (sql, params) => Object.values((await anon(sql, params))[0])[0];
 const fails = async (sql, params, code) => { await assert.rejects(anon(sql, params), (e) => { assert.equal(e.code, code, e.message); return true; }); };
 
-assert.equal(await one('select public.mc_api_version()'), 1);
+assert.equal(await one('select public.mc_api_version()'), 2);
 await fails('select * from public.items', [], '42501');
 await fails('select * from public.mc_agents', [], '42501');
 await fails("select public.mc_check('pw')", [], '42501');
@@ -74,6 +74,21 @@ assert.deepEqual((await one('select public.mc_wishes($1, $2, $3)', [agent.token,
 await anon('select public.mc_fulfill_put($1, $2)', [agent.token, JSON.stringify([{ itemId: 'n2', ref: 'b/书二（完整版）.txt', ownedAt: '2026-03-02T00:00:00Z' }])]);
 assert.equal((await one("select public.mc_fulfill_pull('pw')"))[0].rejected, false, 'a different match is offered again');
 console.log('PASS fulfilment kept apart from items, rejected per match');
+
+// Screenshots: an app uploads its own and reads those of wishes in its categories, the hub page sees them all.
+const PNG = 'data:image/png;base64,iVBORw0KGgo=';
+await anon('select public.mc_agent_put_image($1, $2, $3)', [agent.token, 'shot-app-1', PNG]);
+await fails('select public.mc_agent_put_image($1, $2, $3)', [agent.token, 'shot-app-2', 'hello'], '22023');
+await fails('select public.mc_agent_put_image($1, $2, $3)', [agent.token, '../x', PNG], '22023');
+await fails('select public.mc_agent_put_image($1, $2, $3)', ['mch_wrong', 'shot-app-3', PNG], '28000');
+assert.equal(await one("select public.mc_get_image('pw', 'shot-app-1')"), PNG);
+await anon("select public.mc_put_image('pw', 'shot-hub-1', $1)", [PNG]);
+assert.equal(await one('select public.mc_agent_get_image($1, $2)', [agent.token, 'shot-hub-1']), null, 'not on any of its wishes yet');
+await anon('select public.mc_push($1, $2)', ['pw', JSON.stringify([item('n4', 'novel', '书四', '2026-04-01T00:00:00Z', { shots: ['shot-hub-1'] }), item('m4', 'movie', '片四', '2026-04-01T00:00:00Z', { shots: ['shot-app-1'] })])]);
+assert.equal(await one('select public.mc_agent_get_image($1, $2)', [agent.token, 'shot-hub-1']), PNG);
+assert.equal(await one('select public.mc_agent_get_image($1, $2)', [agent.token, 'shot-app-1']), null, "a movie's screenshot is not for 书屿");
+assert.equal(await one('select public.mc_agent_get_image($1, $2)', [plexus.token, 'shot-app-1']), PNG);
+console.log('PASS apps keep screenshots of the wishes in their own categories');
 
 await anon("select public.mc_agent_revoke('pw', $1)", [agent.id]);
 await fails('select public.mc_wishes($1, $2, $3)', [agent.token, null, null], '28000');

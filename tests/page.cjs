@@ -5,6 +5,7 @@ const assert = require('assert/strict');
 const root = require('path').join(__dirname, '..') + '/';
 const html = fs.readFileSync(root + 'index.html', 'utf8').replace(/<script type="module"[^>]*><\/script>/, '');
 let code = 'const Anthropic = window.Anthropic, createClient = (...a) => window.createClient(...a);\n' + fs.readFileSync(root + 'app.js', 'utf8').replace(/^import .*$/gm, '');
+code += '\nwindow.__shotDb = shotDb;'; // lets a test keep screenshots without IndexedDB
 const rpcs = [];
 const dom = new JSDOM(html, { url: 'http://127.0.0.1:8799/', runScripts: 'outside-only', pretendToBeVisual: true });
 const w = dom.window;
@@ -82,6 +83,27 @@ const tick = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   $('#detailBody .detail-close').click();
   assert.ok(!$('#dlgDetail').open);
   console.log('PASS a click on a card opens its details, with edit');
+
+  // Screenshots added to an existing wish from its details, and removed again
+  const kept = [];
+  w.__shotDb.put = async (rec) => { kept.push(rec.id); };
+  w.__shotDb.addPending = async () => {};
+  $('[data-id="g1"] .cover').click();
+  assert.ok($('#detailBody [data-act="addshot"]'), 'a screenshot can be added to any wish');
+  $('#detailBody [data-act="addshot"]').click();
+  const input = $('#shotAddInput');
+  Object.defineProperty(input, 'files', { configurable: true, value: [new w.File(['x'], 'a.png', { type: 'image/png' }), new w.File(['y'], 'b.png', { type: 'image/png' })] });
+  input.dispatchEvent(new w.Event('change'));
+  await tick();
+  let g = JSON.parse(w.localStorage.getItem('mc.items.v1')).find((i) => i.id === 'g1');
+  assert.deepEqual(g.shots, kept, 'kept here, their ids on the wish');
+  assert.ok(g.updatedAt > ts, 'a changed wish syncs');
+  assert.equal($$('#detailBody .shot-thumb').length, 2);
+  $$('#detailBody [data-act="unshot"]')[0].click();
+  g = JSON.parse(w.localStorage.getItem('mc.items.v1')).find((i) => i.id === 'g1');
+  assert.deepEqual(g.shots, kept.slice(1));
+  $('#detailBody .detail-close').click();
+  console.log('PASS screenshots are added to and removed from a wish in its details');
   $('[data-status="all"]').click();
   assert.equal($('#cnt-all').textContent, '4'); assert.equal($$('#list .card').length, 4, '全部 lists wanted, owned and done together');
   $('[data-status="todo"]').click();

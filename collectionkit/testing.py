@@ -1,5 +1,5 @@
 """A wish hub in memory for tests: patch collectionkit.hub.fetch with a FakeHub. It answers the RPCs the way
-supabase/migrations/002_wish_hub.sql does, closely enough for the apps' tests; tests/migrations.mjs checks the real SQL."""
+supabase/migrations/002_wish_hub.sql and 003_shots.sql do, closely enough for the apps' tests; tests/migrations.mjs checks the real SQL."""
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -22,6 +22,8 @@ class FakeHub:
         self.revoked = set()
         self.offline = False
         self.calls = []
+        self.images = {}      # id -> data URL
+        self.version = 2      # mc_api_version; below 2 the screenshot RPCs are missing
 
     def token(self,app):
         token = 'mch_'+app.ljust(48,'0')
@@ -40,7 +42,8 @@ class FakeHub:
         args = json.loads(request.data)
         self.calls.append((name,args))
         if self.offline:raise Offline('连不上心愿中枢，请检查网络。')
-        if name=='mc_api_version':return 200,b'1'
+        if name=='mc_api_version':return 200,str(self.version).encode()
+        if self.version<2 and 'image' in name:return 404,json.dumps({'code':'PGRST202','message':'not found'}).encode()
         app = self.tokens.get(args.get('p_token'))
         if not app or args['p_token'] in self.revoked:return 401,json.dumps({'code':'28000','message':'invalid device token'}).encode()
         return 200,json.dumps(getattr(self,name)(app,args),ensure_ascii=False).encode()
@@ -68,3 +71,11 @@ class FakeHub:
             self.fulfilled[(row['itemId'],app)] = {'itemId':row['itemId'],'app':app,'ref':ref,'url':row.get('url',''),'title':row.get('title',''),
                                                   'ownedAt':row.get('ownedAt'),'rejected':bool(old and old['rejected'] and old['ref']==ref)}
         return None
+
+    def mc_agent_put_image(self,app,args):
+        self.images.setdefault(args['p_id'],args['p_data'])
+        return None
+
+    def mc_agent_get_image(self,app,args):
+        if not any(args['p_id'] in (i.get('shots') or []) for i,_ in self.items.values() if i.get('category') in CATEGORIES[app]):return None
+        return self.images.get(args['p_id'])

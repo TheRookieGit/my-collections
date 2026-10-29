@@ -10,6 +10,7 @@
 |---|---|
 | [001_base.sql](migrations/001_base.sql) | 收藏、同步密码、共享设置、截图（原来的 `schema.sql`） |
 | [002_wish_hub.sql](migrations/002_wish_hub.sql) | 心愿中枢：接口版本、密码失败次数限制、已配对的设备、已拥有记录、应用拉取和添加心愿 |
+| [003_shots.sql](migrations/003_shots.sql) | 原截图双向同步：已配对的应用凭设备令牌上传、读取心愿的原截图 |
 
 想知道已经执行到哪一个，运行：
 
@@ -36,13 +37,15 @@ select setval('public.mc_check_locked', 1);
 
 | 函数 | 谁用 | 作用 |
 |---|---|---|
-| `mc_api_version()` | 各应用 | 接口版本（现在是 1），低于应用需要的版本时提示先执行新的迁移 |
+| `mc_api_version()` | 各应用 | 接口版本（现在是 2），低于应用需要的版本时提示先执行新的迁移 |
 | `mc_pull` / `mc_push` | 网页 | 拉取、推送全部收藏，`updatedAt` 较新者胜出 |
 | `mc_agent_create(p_pass, name, app)` | 网页 | 生成配对码（只显示这一次），`app` 是 `shuyu` / `plexus` / `steamless` |
 | `mc_agent_list` / `mc_agent_revoke` | 网页 | 查看、吊销已配对的设备 |
 | `mc_wishes(p_token, categories, since)` | 应用 | 增量拉取自己负责的分类（书屿：小说；Plexus：电影、电视剧；Steamless：游戏），包含已删除的条目 |
 | `mc_wish_put(p_token, item)` | 应用 | 应用里「添加想看」直接写进中枢，只能写自己负责的分类 |
 | `mc_fulfill_put(p_token, rows)` | 应用 | 回报「已拥有」：匹配到的东西和跳转链接 |
+| `mc_agent_put_image(p_token, id, data)` | 应用 | 上传原截图（图片 data URL，最大 4 MB），心愿的 `shots` 里记它的 id |
+| `mc_agent_get_image(p_token, id)` | 应用 | 读取原截图，只给自己负责的分类里心愿用到的图 |
 | `mc_fulfill_pull(p_pass)` | 网页 | 读取所有「已拥有」记录 |
 | `mc_fulfill_reject(p_pass, item_id, app)` | 网页 | 「不是这个」：应用以后跳过这个匹配，换成别的匹配时会重新提示 |
 

@@ -431,6 +431,21 @@ dialog.detail { width: min(640px, calc(100vw - 28px)); }
 }
 .shot-thumb:hover { border-color: var(--c); transform: translateY(-2px); }
 .shot-thumb.missing { opacity: .4; }
+.shot-wrap { position: relative; flex: none; display: flex; }
+.shot-remove {
+  position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%;
+  display: grid; place-items: center; color: #fff; background: rgba(0,0,0,.5); opacity: 0; transition: opacity .15s;
+}
+.shot-remove svg { width: 13px; height: 13px; }
+.shot-wrap:hover .shot-remove, .shot-remove:focus-visible { opacity: 1; }
+@media (hover: none) { .shot-remove { opacity: 1; } }
+.shot-add {
+  flex: none; width: 92px; height: 164px; padding: 0; border-radius: 12px; border: 1px dashed var(--line-strong);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  color: var(--faint); background: transparent; font-size: 12px;
+}
+.shot-add svg { width: 20px; height: 20px; }
+.shot-add:hover { color: var(--c); border-color: var(--c); }
 .detail-times { display: flex; flex-wrap: wrap; gap: 8px 28px; margin: 0; padding-top: 14px; border-top: 1px dashed var(--line-strong); }
 .detail-times div { display: flex; flex-direction: column; gap: 2px; }
 .detail-times dt { font-size: 11px; font-weight: 600; letter-spacing: .08em; color: var(--faint); }
