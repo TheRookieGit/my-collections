@@ -161,6 +161,10 @@ code { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: .9e
 .seg button b { font-weight: 500; font-size: 12px; margin-left: 4px; color: var(--faint); font-variant-numeric: tabular-nums; }
 .seg button.active { background: var(--card); color: var(--text); box-shadow: 0 1px 2px rgba(29,27,24,.08), 0 2px 8px -2px rgba(29,27,24,.08); }
 .seg button.active b { color: var(--gold); }
+/* 选中「已拥有」「已实现」时，切换按钮也换成对应的颜色 */
+.seg button[data-status="owned"].active { background: #3F7A50; color: #fff; }
+.seg button[data-status="done"].active { background: #A9822F; color: #fff; }
+.seg button[data-status="owned"].active b, .seg button[data-status="done"].active b { color: rgba(255,255,255,.8); }
 .search { flex: 1; min-width: 180px; position: relative; display: flex; align-items: center; }
 .search svg { position: absolute; left: 14px; color: var(--faint); pointer-events: none; }
 .search input { padding-left: 38px; border-radius: 999px; background: var(--card); border-color: var(--line); }
@@ -335,7 +339,28 @@ code { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: .9e
         conic-gradient(from -45deg at 50% 100%, #000 90deg, #0000 0) bottom / 14px 8px repeat-x;
 }
 
-.st-done .cover { filter: grayscale(.9) brightness(.92); }
+/* 已拥有：绿色印章、绿边；已实现：金色印章、封面褪色 */
+.cv-stamp {
+  position: absolute; z-index: 1; right: 16px; top: 31.25cqw; width: 76px; height: 76px; border-radius: 50%;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  transform: translateY(-46%) rotate(-12deg); color: #fff; text-align: center; pointer-events: none;
+  background: color-mix(in srgb, var(--stamp) 88%, transparent);
+  box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--stamp) 88%, transparent), inset 0 0 0 4.5px rgba(255,255,255,.85), 0 8px 20px -8px rgba(0,0,0,.5);
+  animation: stamp .45s cubic-bezier(.3,1.6,.5,1) both .15s;
+}
+.cv-stamp b { font-family: var(--serif); font-size: 15px; font-weight: 700; letter-spacing: .08em; }
+.cv-stamp small { font-size: 10px; opacity: .9; letter-spacing: .04em; max-width: 60px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@keyframes stamp { from { opacity: 0; transform: translateY(-46%) rotate(-12deg) scale(1.6); } }
+.st-owned { --stamp: #3F7A50; }
+.st-done { --stamp: #A9822F; }
+.st-owned .cv-text, .st-done .cv-text { padding-right: 84px; }
+.card, .detail-card { container-type: inline-size; }
+.detail-card .cv-stamp { width: 96px; height: 96px; right: 26px; top: 26.5cqw; }
+.detail-card .cv-stamp b { font-size: 19px; }
+.detail-card.st-owned .cv-text, .detail-card.st-done .cv-text { padding-right: 110px; }
+.card.st-owned { border-color: color-mix(in srgb, var(--stamp) 55%, var(--line)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--stamp) 30%, transparent), var(--shadow); }
+.card.st-owned .card-body { background: color-mix(in srgb, var(--stamp) 6%, var(--card)); }
+.st-done .cover { filter: grayscale(.85) brightness(.95); }
 .st-done .card-title { text-decoration: line-through; text-decoration-thickness: 1.5px; }
 
 /* 卡片下半部分 */

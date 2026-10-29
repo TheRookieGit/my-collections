@@ -208,6 +208,11 @@ function parts(i) {
   const steam = steamHeader(i);
   const year = (i.category === "movie" || i.category === "tv") && /^\d{4}$/.test(i.extra?.year || "") ? `<span class="cv-year">${i.extra.year}</span>` : "";
   const code = i.category === "coupon" && i.extra?.code ? `<span class="cv-code">${esc(i.extra.code)}</span>` : "";
+  // 已拥有、已实现的在封面上盖个章，一眼看得出是哪一类。章放在封面外面，已实现的封面褪色时章不跟着褪
+  const state = stateOf(i);
+  const by = state === "owned" ? ownedRows(i).map((f) => APPS[f.app]?.name || f.app)[0] : "";
+  const stamp = state === "owned" ? `<span class="cv-stamp"><b>已拥有</b>${by ? `<small>${esc(by)}</small>` : ""}</span>`
+    : state === "done" ? `<span class="cv-stamp"><b>已实现</b><small>${fmtTime(i.doneAt).slice(5, 10)}</small></span>` : "";
   const cover = `
     <div class="cover cv-${esc(i.category)}${steam ? " has-img" : ""}">
       ${steam ? `<img class="cv-img" src="${steam}" alt="" loading="lazy" onerror="this.parentNode.classList.remove('has-img');this.remove()">` : ""}
@@ -222,7 +227,7 @@ function parts(i) {
       </div>
     </div>`;
   const doneBtn = ro || (doneHidden(i.category) && !i.done) ? "" : `<button data-act="done" class="btn-done ${i.done ? "is-done" : ""}">${i.done ? "撤回" : "已实现"}</button>`;
-  return { c, cover, metas: extras + kind + aliases + downloads + link, owned, send, ro, doneBtn };
+  return { c, cover: cover + stamp, metas: extras + kind + aliases + downloads + link, owned, send, ro, doneBtn };
 }
 
 // 卡片只放要点：备注最多三行，点卡片打开详情看全部
