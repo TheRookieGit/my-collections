@@ -121,6 +121,19 @@ function toast(msg) {
 }
 
 document.querySelectorAll("dialog [data-close]").forEach((b) => b.addEventListener("click", () => b.closest("dialog").close()));
+// 点弹窗外面也能关掉（叠着的只关最上面那个）；在里面按下、拖到外面松开（比如选文字）不算
+const outsideOf = (d, e) => {
+  const r = d.getBoundingClientRect();
+  return e.target === d && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom);
+};
+document.querySelectorAll("dialog").forEach((d) => {
+  let downOutside = false;
+  d.addEventListener("pointerdown", (e) => { downOutside = outsideOf(d, e); });
+  d.addEventListener("click", (e) => {
+    if (downOutside && outsideOf(d, e)) d.close();
+    downOutside = false;
+  });
+});
 
 // ---------- 渲染 ----------
 function renderTabs() {

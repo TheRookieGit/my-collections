@@ -84,6 +84,19 @@ const tick = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   assert.ok(!$('#dlgDetail').open);
   console.log('PASS a click on a card opens its details, with edit');
 
+  // A click outside a dialog closes it; one that started inside (selecting text) does not
+  const at = (el, type, x) => el.dispatchEvent(new w.MouseEvent(type, { bubbles: true, clientX: x, clientY: 5 }));
+  w.HTMLDialogElement.prototype.getBoundingClientRect = () => ({ left: 100, right: 400, top: 0, bottom: 600 });
+  $('[data-id="c1"] .cover').click();
+  at($('#detailBody .detail-body'), 'pointerdown', 200); at($('#dlgDetail'), 'click', 500);
+  assert.ok($('#dlgDetail').open, 'pressed inside, released outside: stays open');
+  at($('#dlgDetail'), 'pointerdown', 200); at($('#dlgDetail'), 'click', 200);
+  assert.ok($('#dlgDetail').open, 'a click on the dialog itself stays open');
+  at($('#dlgDetail'), 'pointerdown', 20); at($('#dlgDetail'), 'click', 20);
+  assert.ok(!$('#dlgDetail').open, 'a click outside closes it');
+  delete w.HTMLDialogElement.prototype.getBoundingClientRect;
+  console.log('PASS a click outside a dialog closes it');
+
   // Screenshots added to an existing wish from its details, and removed again
   const kept = [];
   w.__shotDb.put = async (rec) => { kept.push(rec.id); };
