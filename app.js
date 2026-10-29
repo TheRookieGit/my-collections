@@ -9,15 +9,15 @@ const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: fa
 // ---------- 分类定义 ----------
 // fulfiller：哪个应用会自动回报「已拥有」；links：可以记下载链接，送到那个应用去下载
 const CATS = {
-  novel:      { name: "小说",     icon: "📚", fields: [{ key: "author", label: "作者" }], fulfiller: "shuyu", links: true },
-  movie:      { name: "电影",     icon: "🎬", fields: [{ key: "year", label: "年份" }], fulfiller: "plexus", links: true },
-  tv:         { name: "电视剧",   icon: "📺", fields: [{ key: "year", label: "年份" }], fulfiller: "plexus", links: true },
-  game:       { name: "游戏",     icon: "🎮", fields: [{ key: "release", label: "发售" }], fulfiller: "steamless" },
-  coupon:     { name: "Coupon",   icon: "🎟️", fields: [{ key: "store", label: "商家" }, { key: "code", label: "券码" }, { key: "expiry", label: "到期日", type: "date" }] },
-  restaurant: { name: "餐厅",     icon: "🍜", fields: [{ key: "cuisine", label: "菜系" }, { key: "address", label: "地址" }] },
-  tool:       { name: "工具",     icon: "🧰", fields: [{ key: "platform", label: "平台" }] },
-  place:      { name: "想去玩",   icon: "🗺️", fields: [{ key: "location", label: "位置" }] },
-  grocery:    { name: "超市购物", icon: "🛒", fields: [{ key: "store", label: "超市" }, { key: "quantity", label: "数量" }] },
+  novel:      { name: "小说",     hue: "#A0583C", fields: [{ key: "author", label: "作者" }], fulfiller: "shuyu", links: true },
+  movie:      { name: "电影",     hue: "#3E5C76", fields: [{ key: "year", label: "年份" }], fulfiller: "plexus", links: true },
+  tv:         { name: "电视剧",   hue: "#5D6A92", fields: [{ key: "year", label: "年份" }], fulfiller: "plexus", links: true },
+  game:       { name: "游戏",     hue: "#6E5A92", fields: [{ key: "release", label: "发售" }], fulfiller: "steamless" },
+  coupon:     { name: "Coupon",   hue: "#A88433", fields: [{ key: "store", label: "商家" }, { key: "code", label: "券码" }, { key: "expiry", label: "到期日", type: "date" }] },
+  restaurant: { name: "餐厅",     hue: "#A4473F", fields: [{ key: "cuisine", label: "菜系" }, { key: "address", label: "地址" }] },
+  tool:       { name: "工具",     hue: "#4D6E5E", fields: [{ key: "platform", label: "平台" }] },
+  place:      { name: "想去玩",   hue: "#2F7773", fields: [{ key: "location", label: "位置" }] },
+  grocery:    { name: "超市购物", hue: "#7C8048", fields: [{ key: "store", label: "超市" }, { key: "quantity", label: "数量" }] },
 };
 const EXTRA_KEYS = [...new Set(Object.values(CATS).flatMap((c) => c.fields.map((f) => f.key)))];
 // 小说的类型，和书屿想看清单的一样：按书名、文件夹名还是压缩包名去匹配
@@ -122,9 +122,11 @@ function renderTabs() {
   const wanted = live().filter((i) => stateOf(i) === "todo");
   for (const i of wanted) counts[i.category] = (counts[i.category] || 0) + 1;
   const total = wanted.length;
-  const tabs = [["all", "全部", "✨", total], ...Object.entries(CATS).map(([k, c]) => [k, c.name, c.icon, counts[k] || 0])];
+  const owned = live().filter((i) => stateOf(i) === "owned").length;
+  $("#summary").textContent = `${total} 个心愿${owned ? ` · ${owned} 个已拥有` : ""}`;
+  const tabs = [["all", "全部", "", total], ...Object.entries(CATS).map(([k, c]) => [k, c.name, c.hue, counts[k] || 0])];
   $("#catTabs").innerHTML = tabs
-    .map(([k, n, ic, c]) => `<button data-cat="${k}" class="${ui.cat === k ? "active" : ""}">${ic} ${n}<small>${c || ""}</small></button>`)
+    .map(([k, n, hue, c]) => `<button data-cat="${k}" class="${ui.cat === k ? "active" : ""}"${hue ? ` style="--c:${hue}"` : ""}>${hue ? '<i class="dot-c"></i>' : ""}${n}<small>${c || ""}</small></button>`)
     .join("");
 }
 
@@ -144,52 +146,58 @@ function renderList() {
   });
 
   if (!list.length) {
-    $("#list").innerHTML = `<div class="empty">${ui.status === "done" ? "还没有已实现的收藏"
-      : ui.status === "owned" ? "还没有已拥有的收藏<br><span class='small'>书屿、Plexus、Steamless 配对后，下载到的会自动出现在这里</span>"
-      : "这里空空的，点右下角添加一个吧～<br><span class='small'>也可以直接 Ctrl+V 粘贴截图</span>"}</div>`;
+    const [head, sub] = ui.status === "done" ? ["还没有已实现的心愿", "实现了的心愿会收在这里"]
+      : ui.status === "owned" ? ["还没有已拥有的", "书屿、Plexus、Steamless 配对后，下载到的会自动出现在这里"]
+      : ["这里还空着", "点下面的「添加」，或者直接 Ctrl+V 粘贴一张截图"];
+    $("#list").innerHTML = `<div class="empty"><p class="empty-head">${head}</p><p>${sub}</p></div>`;
     return;
   }
   $("#list").innerHTML = list.map(cardHtml).join("");
 }
 
 function cardHtml(i) {
-  const c = CATS[i.category] || { name: i.category, icon: "📌", fields: [] };
+  const c = CATS[i.category] || { name: i.category, hue: "#888", fields: [] };
+  const ext = (href, text) => `<a href="${esc(href)}" target="_blank" rel="noopener">${text}</a>`;
+  const row = (k, v) => `<div class="meta"><span class="k">${k}</span><span class="v">${v}</span></div>`;
   const extras = c.fields
     .filter((f) => i.extra?.[f.key])
-    .map((f) => {
-      const v = i.extra[f.key];
-      const val = isUrl(v) ? `<a href="${esc(v)}" target="_blank" rel="noopener">${esc(v)}</a>` : esc(v);
-      return `<div class="meta">${f.label}：${val}</div>`;
-    })
+    .map((f) => row(f.label, isUrl(i.extra[f.key]) ? ext(i.extra[f.key], esc(hostOf(i.extra[f.key]))) : esc(i.extra[f.key])))
     .join("");
-  const kind = i.category === "novel" && KINDS[i.kind] && i.kind !== "novel" ? `<div class="meta">类型：${KINDS[i.kind]}</div>` : "";
-  const aliases = i.aliases.length ? `<div class="meta">别名：${i.aliases.map(esc).join("、")}</div>` : "";
-  const downloads = i.links.length ? `<div class="meta">下载：${i.links.map((l) => (isUrl(l) ? `<a href="${esc(l)}" target="_blank" rel="noopener">⬇️ 链接</a>` : esc(l))).join(" ")}</div>` : "";
-  const link = i.link ? `<div class="meta">🔗 <a href="${esc(i.link)}" target="_blank" rel="noopener">${esc(i.link)}</a></div>` : "";
-  const note = i.note ? `<div class="meta">${esc(i.note)}</div>` : "";
+  const kind = i.category === "novel" && KINDS[i.kind] && i.kind !== "novel" ? row("类型", KINDS[i.kind]) : "";
+  const aliases = i.aliases.length ? row("别名", i.aliases.map(esc).join("、")) : "";
+  const downloads = i.links.length ? row("下载", i.links.map((l, n) => (isUrl(l) ? ext(l, `${esc(hostOf(l))}${i.links.length > 1 ? ` ${n + 1}` : ""}`) : esc(l))).join("　")) : "";
+  const link = i.link ? row("链接", ext(i.link, esc(hostOf(i.link)))) : "";
+  const shots = i.shots?.length ? row("截图", `<button data-act="shots" class="link-btn">查看原截图${i.shots.length > 1 ? ` ×${i.shots.length}` : ""}</button>`) : "";
+  const metas = extras + kind + aliases + downloads + link + shots;
+  const note = i.note ? `<p class="note">${esc(i.note)}</p>` : "";
   const owned = ownedRows(i).map((f) => `
-    <div class="owned">✅ 已拥有 · ${esc(APPS[f.app]?.name || f.app)}${f.title ? `：${esc(f.title)}` : ""} · ${fmtTime(f.ownedAt).slice(0, 10)}
+    <div class="owned"><span class="owned-text">已拥有 · ${esc(APPS[f.app]?.name || f.app)}${f.title ? `：${esc(f.title)}` : ""} · ${fmtTime(f.ownedAt).slice(0, 10)}</span>
       ${isUrl(f.url) ? `<a href="${esc(f.url)}" target="_blank" rel="noopener">查看</a>` : ""}
       ${readOnly(i) ? "" : `<button data-act="reject" data-app="${esc(f.app)}" class="link-btn" title="匹配错了：${esc(APPS[f.app]?.name || f.app)}以后不再把它算作这条心愿">不是这个</button>`}</div>`).join("");
   const app = APPS[c.fulfiller];
   const send = app?.send && i.links.length && !i.done && !owned
-    ? `<a class="send" href="${app.send}#links=${encodeURIComponent(i.links.join("\n"))}" target="_blank" rel="noopener">⬇️ 送到${app.name}下载</a>` : "";
+    ? `<a class="send" href="${app.send}#links=${encodeURIComponent(i.links.join("\n"))}" target="_blank" rel="noopener">送到${app.name}下载 →</a>` : "";
   const ro = readOnly(i);
   return `
-  <article class="card ${stateOf(i)}" data-id="${i.id}">
+  <article class="card ${stateOf(i)}" data-id="${i.id}" style="--c:${c.hue}">
     <div class="card-head">
-      <div class="card-title">${esc(i.title)}</div>
-      <span class="badge">${c.icon} ${c.name}</span>
+      <span class="badge"><i class="dot-c"></i>${c.name}</span>
+      <div class="stars" ${ro ? "" : 'data-act="rate" title="点击修改等级"'}>${[1, 2, 3, 4, 5].map((n) => `<span class="${n <= (i.rating || 0) ? "on" : ""}" ${ro ? "" : `data-n="${n}"`}>★</span>`).join("")}</div>
     </div>
-    <div class="stars" ${ro ? "" : 'data-act="rate" title="点击修改等级"'}>${[1, 2, 3, 4, 5].map((n) => `<span ${ro ? "" : `data-n="${n}"`}>${n <= (i.rating || 0) ? "★" : "☆"}</span>`).join("")}</div>
-    ${extras}${kind}${aliases}${downloads}${link}${note}${i.shots?.length ? `<div class="meta"><button data-act="shots" class="link-btn">🖼 原截图${i.shots.length > 1 ? ` ×${i.shots.length}` : ""}</button></div>` : ""}
+    <h3 class="card-title">${esc(i.title)}</h3>
+    ${note}${metas ? `<div class="metas">${metas}</div>` : ""}
     ${owned}${send}
     <div class="card-foot">
-      <span class="time">收藏于 ${fmtTime(i.createdAt)}${i.done ? `<br>实现于 ${fmtTime(i.doneAt)}` : ""}</span>
-      ${ro ? `<span class="muted small">来自 Steamless</span>` : `<button data-act="edit" class="ghost">编辑</button>`}
-      ${ro || (doneHidden(i.category) && !i.done) ? "" : `<button data-act="done" class="btn-done ${i.done ? "is-done" : ""}">${i.done ? "↩ 撤回" : "✓ 已实现"}</button>`}
+      <span class="time">${i.done ? `实现于 ${fmtTime(i.doneAt).slice(0, 10)}` : `收藏于 ${fmtTime(i.createdAt).slice(0, 10)}`}</span>
+      ${ro ? `<span class="from">来自 Steamless</span>` : `<button data-act="edit" class="text-btn">编辑</button>`}
+      ${ro || (doneHidden(i.category) && !i.done) ? "" : `<button data-act="done" class="btn-done ${i.done ? "is-done" : ""}">${i.done ? "撤回" : "已实现"}</button>`}
     </div>
   </article>`;
+}
+
+// 链接在卡片上只显示域名：pan.quark.cn、store.steampowered.com
+function hostOf(u) {
+  try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return u; }
 }
 
 function render() { renderTabs(); renderList(); }
@@ -239,7 +247,7 @@ const form = $("#editForm");
 let editing = null;
 let editRating = 3;
 
-$("#fCategory").innerHTML = Object.entries(CATS).map(([k, c]) => `<option value="${k}">${c.icon} ${c.name}</option>`).join("");
+$("#fCategory").innerHTML = Object.entries(CATS).map(([k, c]) => `<option value="${k}">${c.name}</option>`).join("");
 $("#fKind").innerHTML = Object.entries(KINDS).map(([k, n]) => `<option value="${k}">${n}</option>`).join("");
 
 function renderExtraFields(cat, extra = {}) {
@@ -663,7 +671,7 @@ function renderShotResults() {
     <div class="shot-item" data-idx="${idx}">
       <div class="row">
         <input type="checkbox" data-k="_checked" ${r._checked ? "checked" : ""}>
-        <select data-k="category" style="width:auto">${Object.entries(CATS).map(([k, c]) => `<option value="${k}" ${k === r.category ? "selected" : ""}>${c.icon} ${c.name}</option>`).join("")}</select>
+        <select data-k="category" style="width:auto">${Object.entries(CATS).map(([k, c]) => `<option value="${k}" ${k === r.category ? "selected" : ""}>${c.name}</option>`).join("")}</select>
         <span class="stars-input">${[1, 2, 3, 4, 5].map((n) => `<button type="button" data-rate="${n}" class="${n <= r.rating ? "on" : ""}">★</button>`).join("")}</span>
       </div>
       ${r._seen ? `<div class="seen">${esc(r._seen)}，默认不保存</div>` : ""}
@@ -737,7 +745,7 @@ function openSettings() {
   sform.apiKey.value = cfg.apiKey || "";
   sform.syncPass.value = cfg.syncPass || "";
   $("#hideDone").innerHTML = Object.entries(CATS).map(([k, c]) =>
-    `<label class="check"><input type="checkbox" name="hide_${k}" ${doneHidden(k) ? "checked" : ""}>${c.icon} ${c.name}</label>`).join("");
+    `<label class="check"><input type="checkbox" name="hide_${k}" ${doneHidden(k) ? "checked" : ""}>${c.name}</label>`).join("");
   $("#shuyuServer").value = shuyuServer();
   $("#pairCode").hidden = true;
   $("#dlgSettings").showModal();
