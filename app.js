@@ -140,9 +140,10 @@ function renderTabs() {
 function renderList() {
   const inCat = live().filter((i) => ui.cat === "all" || i.category === ui.cat);
   for (const s of ["todo", "owned", "done"]) $(`#cnt-${s}`).textContent = inCat.filter((i) => stateOf(i) === s).length;
+  $("#cnt-all").textContent = inCat.length;
 
   const q = ui.q.trim().toLowerCase();
-  let list = inCat.filter((i) => stateOf(i) === ui.status);
+  let list = ui.status === "all" ? inCat : inCat.filter((i) => stateOf(i) === ui.status);
   if (q) list = list.filter((i) => [i.title, i.note, ...i.aliases, ...Object.values(i.extra || {})].join(" ").toLowerCase().includes(q));
 
   const [field, dir] = ui.sort.split("-");
@@ -153,7 +154,8 @@ function renderList() {
   });
 
   if (!list.length) {
-    const [head, sub] = ui.status === "done" ? ["还没有已实现的心愿", "实现了的心愿会收在这里"]
+    const [head, sub] = ui.status === "all" ? ["这里还空着", "点下面的「添加」，或者直接 Ctrl+V 粘贴一张截图"]
+      : ui.status === "done" ? ["还没有已实现的心愿", "实现了的心愿会收在这里"]
       : ui.status === "owned" ? ["还没有已拥有的", "书屿、Plexus、Steamless 配对后，下载到的会自动出现在这里"]
       : ["这里还空着", "点下面的「添加」，或者直接 Ctrl+V 粘贴一张截图"];
     $("#list").innerHTML = `<div class="empty"><p class="empty-head">${head}</p><p>${sub}</p></div>`;

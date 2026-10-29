@@ -82,6 +82,10 @@ const tick = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   $('#detailBody .detail-close').click();
   assert.ok(!$('#dlgDetail').open);
   console.log('PASS a click on a card opens its details, with edit; Steamless ones read-only');
+  $('[data-status="all"]').click();
+  assert.equal($('#cnt-all').textContent, '4'); assert.equal($$('#list .card').length, 4, '全部 lists wanted, owned and done together');
+  $('[data-status="todo"]').click();
+  console.log('PASS 全部 shows every state');
 
   $('[data-status="owned"]').click();
   const n2 = $('[data-id="n2"]');

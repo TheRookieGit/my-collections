@@ -170,7 +170,7 @@ code { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: .9e
 .seg button[data-status="done"].active { background: #A9822F; color: #fff; }
 .seg button[data-status="owned"].active b { color: rgba(126,36,64,.7); }
 .seg button[data-status="done"].active b { color: rgba(255,255,255,.8); }
-.search { flex: 1; min-width: 180px; position: relative; display: flex; align-items: center; }
+.search { flex: 0 1 300px; min-width: 180px; margin-left: auto; position: relative; display: flex; align-items: center; }
 .search svg { position: absolute; left: 14px; color: var(--faint); pointer-events: none; }
 .search input { padding-left: 38px; border-radius: 999px; background: var(--card); border-color: var(--line); }
 .toolbar select { width: auto; border-radius: 999px; background-color: var(--card); border-color: var(--line); }

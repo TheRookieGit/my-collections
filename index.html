@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Serif+SC:wght@500;600;700&display=swap">
-  <link rel="stylesheet" href="style.css?v=20">
+  <link rel="stylesheet" href="style.css?v=21">
 </head>
 <body>
   <header class="topbar">
@@ -33,6 +33,7 @@
 
   <section class="toolbar">
     <div class="seg" id="statusSeg">
+      <button data-status="all">全部 <b id="cnt-all">0</b></button>
       <button data-status="todo" class="active">想要 <b id="cnt-todo">0</b></button>
       <button data-status="owned" title="书屿、Plexus、Steamless 自动回报已经有了">已拥有 <b id="cnt-owned">0</b></button>
       <button data-status="done">已实现 <b id="cnt-done">0</b></button>
@@ -209,6 +210,6 @@
 
   <div id="toast" class="toast"></div>
 
-  <script type="module" src="app.js?v=18"></script>
+  <script type="module" src="app.js?v=21"></script>
 </body>
 </html>
