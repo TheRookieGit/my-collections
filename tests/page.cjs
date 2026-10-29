@@ -94,6 +94,12 @@ const tick = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   assert.ok($('#dlgDetail').open, 'a click on the dialog itself stays open');
   at($('#dlgDetail'), 'pointerdown', 20); at($('#dlgDetail'), 'click', 20);
   assert.ok(!$('#dlgDetail').open, 'a click outside closes it');
+  for (const id of ['#dlgEdit', '#dlgShot']) {
+    $(id).showModal();
+    at($(id), 'pointerdown', 20); at($(id), 'click', 20);
+    assert.ok($(id).open, `${id} holds unsaved input: only its buttons close it`);
+    $(id).close();
+  }
   delete w.HTMLDialogElement.prototype.getBoundingClientRect;
   console.log('PASS a click outside a dialog closes it');
 
