@@ -50,8 +50,9 @@ function normalize(i) {
   if (!out.externalIds || typeof out.externalIds !== "object") out.externalIds = {};
   return out;
 }
-// 游戏心愿以 Steamless 为准：它同步过来的条目在这里只能看
-const readOnly = (i) => i.source === "steamless";
+// Steamless 同步过来的游戏在这里也能改：名字、备注会改回 Steamless，评分、别名等留在这里。
+// 它们的「已拥有」就是 Steamless 里的这款游戏本身，不会匹配错，所以没有「不是这个」
+const fromSteamless = (i) => i.source === "steamless";
 
 // ---------- 存储 ----------
 const LS_DATA = "mc.items.v1";
@@ -201,11 +202,10 @@ function parts(i) {
   const owned = ownedRows(i).map((f) => `
     <div class="owned"><span class="owned-text">已拥有 · ${esc(APPS[f.app]?.name || f.app)}${f.title ? `：${esc(f.title)}` : ""} · ${fmtTime(f.ownedAt).slice(0, 10)}</span>
       ${isUrl(f.url) ? `<a href="${esc(f.url)}" target="_blank" rel="noopener">查看</a>` : ""}
-      ${readOnly(i) ? "" : `<button data-act="reject" data-app="${esc(f.app)}" class="link-btn" title="匹配错了：${esc(APPS[f.app]?.name || f.app)}以后不再把它算作这条心愿">不是这个</button>`}</div>`).join("");
+      ${fromSteamless(i) ? "" : `<button data-act="reject" data-app="${esc(f.app)}" class="link-btn" title="匹配错了：${esc(APPS[f.app]?.name || f.app)}以后不再把它算作这条心愿">不是这个</button>`}</div>`).join("");
   const app = APPS[c.fulfiller];
   const send = app?.send && i.links.length && !i.done && !owned
     ? `<a class="send" href="${app.send}#links=${encodeURIComponent(i.links.join("\n"))}" target="_blank" rel="noopener">送到${app.name}下载 →</a>` : "";
-  const ro = readOnly(i);
   const sub = coverSub(i);
   const steam = steamHeader(i);
   const year = (i.category === "movie" || i.category === "tv") && /^\d{4}$/.test(i.extra?.year || "") ? `<span class="cv-year">${i.extra.year}</span>` : "";
@@ -221,20 +221,20 @@ function parts(i) {
       ${svgIcon(c.icon, "cv-mark")}${year}${code}
       <div class="cv-top">
         <span class="cv-cat">${svgIcon(c.icon)}${c.name}</span>
-        <div class="stars" ${ro ? "" : 'data-act="rate" title="点击修改等级"'}>${[1, 2, 3, 4, 5].map((n) => `<span class="${n <= (i.rating || 0) ? "on" : ""}" ${ro ? "" : `data-n="${n}"`}>★</span>`).join("")}</div>
+        <div class="stars" data-act="rate" title="点击修改等级">${[1, 2, 3, 4, 5].map((n) => `<span class="${n <= (i.rating || 0) ? "on" : ""}" data-n="${n}">★</span>`).join("")}</div>
       </div>
       <div class="cv-text">
         <h3 class="card-title">${esc(i.title)}</h3>
         ${sub ? `<p class="cv-sub">${esc(sub)}</p>` : ""}
       </div>
     </div>`;
-  const doneBtn = ro || (doneHidden(i.category) && !i.done) ? "" : `<button data-act="done" class="btn-done ${i.done ? "is-done" : ""}">${i.done ? "撤回" : "已实现"}</button>`;
-  return { c, cover: cover + stamp, metas: extras + kind + aliases + downloads + link, owned, send, ro, doneBtn };
+  const doneBtn = doneHidden(i.category) && !i.done ? "" : `<button data-act="done" class="btn-done ${i.done ? "is-done" : ""}">${i.done ? "撤回" : "已实现"}</button>`;
+  return { c, cover: cover + stamp, metas: extras + kind + aliases + downloads + link, owned, send, doneBtn };
 }
 
 // 卡片只放要点：备注最多三行，点卡片打开详情看全部
 function cardHtml(i) {
-  const { c, cover, metas, owned, send, ro, doneBtn } = parts(i);
+  const { c, cover, metas, owned, send, doneBtn } = parts(i);
   return `
   <article class="card st-${stateOf(i)}" data-id="${i.id}" data-cat="${esc(i.category)}" style="--c:${c.hue}" title="点击查看详情">
     ${cover}
@@ -243,7 +243,7 @@ function cardHtml(i) {
       ${owned}${send}
       <div class="card-foot">
         <span class="time">${i.done ? `实现于 ${fmtTime(i.doneAt).slice(0, 10)}` : `收藏于 ${fmtTime(i.createdAt).slice(0, 10)}`}</span>
-        ${ro ? `<span class="from">来自 Steamless</span>` : `<button data-act="edit" class="text-btn">编辑</button>`}
+        <button data-act="edit" class="text-btn">编辑</button>
         ${doneBtn}
       </div>
     </div>
@@ -252,7 +252,7 @@ function cardHtml(i) {
 
 // 详情：大封面、完整的备注和字段、原截图、时间和来源
 function detailHtml(i) {
-  const { c, cover, metas, owned, send, ro, doneBtn } = parts(i);
+  const { c, cover, metas, owned, send, doneBtn } = parts(i);
   const times = [
     ["收藏于", fmtTime(i.createdAt)],
     i.done && ["实现于", fmtTime(i.doneAt)],
@@ -273,7 +273,7 @@ function detailHtml(i) {
         ${doneBtn}
         <span class="spacer"></span>
         <button type="button" class="ghost" data-close>关闭</button>
-        ${ro ? `<span class="from">Steamless 同步过来的，在 Steamless 里修改</span>` : `<button type="button" data-act="edit" class="primary">编辑</button>`}
+        <button type="button" data-act="edit" class="primary">编辑</button>
       </div>
     </div>
   </article>`;
