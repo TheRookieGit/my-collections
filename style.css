@@ -335,12 +335,13 @@ code { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: .9e
         conic-gradient(from -45deg at 50% 100%, #000 90deg, #0000 0) bottom / 14px 8px repeat-x;
 }
 
-.card.done .cover { filter: grayscale(.9) brightness(.92); }
-.card.done .card-title { text-decoration: line-through; text-decoration-thickness: 1.5px; }
+.st-done .cover { filter: grayscale(.9) brightness(.92); }
+.st-done .card-title { text-decoration: line-through; text-decoration-thickness: 1.5px; }
 
 /* 卡片下半部分 */
 .card-body { display: flex; flex-direction: column; gap: 10px; padding: 16px 18px 14px; }
-.note { margin: 0; font-size: 14px; line-height: 1.7; color: var(--muted); word-break: break-word; }
+.note { margin: 0; font-size: 14px; line-height: 1.7; color: var(--muted); word-break: break-word; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.card { cursor: pointer; }
 .metas { display: flex; flex-direction: column; gap: 4px; padding-top: 10px; border-top: 1px dashed var(--line-strong); }
 .card-body > .metas:first-child { padding-top: 0; border-top: 0; }
 .meta { display: flex; gap: 12px; font-size: 13px; line-height: 1.6; min-width: 0; }
@@ -371,6 +372,41 @@ code { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: .9e
 .btn-done { padding: 5px 12px; font-size: 13px; border-color: var(--line-strong); color: var(--text); background: transparent; }
 .btn-done:hover { border-color: var(--c); color: var(--c); }
 .btn-done.is-done { color: var(--muted); }
+
+/* ---------- 详情 ---------- */
+dialog.detail { width: min(640px, calc(100vw - 28px)); }
+.detail-card { position: relative; }
+.detail-card .cover { aspect-ratio: 16 / 8.5; padding: 22px 26px 24px; }
+.detail-card .cv-novel { padding-left: 44px; }
+.detail-card .card-title { font-size: 32px; -webkit-line-clamp: 4; }
+.detail-card .cv-sub { font-size: 14px; white-space: normal; }
+.detail-card .cv-mark { width: 220px; height: 220px; }
+.detail-card .cv-top { padding-right: 46px; }
+.detail-card .stars { font-size: 16px; gap: 2px; }
+.detail-close {
+  position: absolute; top: 16px; right: 16px; z-index: 2; width: 36px; height: 36px; padding: 0; display: grid; place-items: center;
+  border: 0; color: #fff; background: rgba(0,0,0,.28); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+}
+.detail-close:hover { background: rgba(0,0,0,.45); }
+.detail-close svg { width: 18px; height: 18px; }
+.detail-body { display: flex; flex-direction: column; gap: 16px; padding: 22px 26px 20px; background: color-mix(in srgb, var(--c) 4%, var(--card)); }
+.detail-note { margin: 0; font-size: 15px; line-height: 1.85; white-space: pre-wrap; word-break: break-word; }
+.detail-body .metas { gap: 6px; }
+.detail-body .meta { font-size: 14px; }
+.detail-section h4 { margin: 0 0 8px; font-size: 12px; font-weight: 600; letter-spacing: .08em; color: var(--c); }
+.detail-shots { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; }
+.shot-thumb {
+  flex: none; width: 92px; height: 164px; padding: 0; border-radius: 12px; border: 1px solid var(--line);
+  background: var(--fill) center top / cover no-repeat;
+}
+.shot-thumb:hover { border-color: var(--c); transform: translateY(-2px); }
+.shot-thumb.missing { opacity: .4; }
+.detail-times { display: flex; flex-wrap: wrap; gap: 8px 28px; margin: 0; padding-top: 14px; border-top: 1px dashed var(--line-strong); }
+.detail-times div { display: flex; flex-direction: column; gap: 2px; }
+.detail-times dt { font-size: 11px; font-weight: 600; letter-spacing: .08em; color: var(--faint); }
+.detail-times dd { margin: 0; font-size: 13px; font-variant-numeric: tabular-nums; }
+.detail-body .dlg-actions { margin: 4px -26px -20px; padding: 14px 26px 20px; align-items: center; background: color-mix(in srgb, var(--c) 4%, var(--card)); }
+.detail-body .dlg-actions .from { font-size: 12px; color: var(--faint); }
 
 /* ---------- 底部工具栏 ---------- */
 .fab-group {

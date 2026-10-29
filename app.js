@@ -181,7 +181,10 @@ function coverSub(i) {
 // 封面图：Steam 游戏用商店横幅，其余用分类自己的纹样。截图不当封面：截下来的多半是整屏，不是海报
 const steamHeader = (i) => i.externalIds?.steamAppId ? `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${Number(i.externalIds.steamAppId)}/header.jpg` : "";
 
-function cardHtml(i) {
+const SOURCES = { screenshot: "截图识别", xhs: "小红书", manual: "手动添加", steamless: "Steamless" };
+
+// 卡片和详情共用的几块：封面、字段、已拥有、送去下载
+function parts(i) {
   const c = CATS[i.category] || { name: i.category, en: "", hue: "#888", icon: ALL_ICON, fields: [] };
   const ext = (href, text) => `<a href="${esc(href)}" target="_blank" rel="noopener">${text}</a>`;
   const row = (k, v) => `<div class="meta"><span class="k">${k}</span><span class="v">${v}</span></div>`;
@@ -193,9 +196,6 @@ function cardHtml(i) {
   const aliases = i.aliases.length ? row("别名", i.aliases.map(esc).join("、")) : "";
   const downloads = i.links.length ? row("下载", i.links.map((l, n) => (isUrl(l) ? ext(l, `${esc(hostOf(l))}${i.links.length > 1 ? ` ${n + 1}` : ""}`) : esc(l))).join("　")) : "";
   const link = i.link ? row("链接", ext(i.link, esc(hostOf(i.link)))) : "";
-  const shots = i.shots?.length ? row("截图", `<button data-act="shots" class="link-btn">查看原截图${i.shots.length > 1 ? ` ×${i.shots.length}` : ""}</button>`) : "";
-  const metas = extras + kind + aliases + downloads + link + shots;
-  const note = i.note ? `<p class="note">${esc(i.note)}</p>` : "";
   const owned = ownedRows(i).map((f) => `
     <div class="owned"><span class="owned-text">已拥有 · ${esc(APPS[f.app]?.name || f.app)}${f.title ? `：${esc(f.title)}` : ""} · ${fmtTime(f.ownedAt).slice(0, 10)}</span>
       ${isUrl(f.url) ? `<a href="${esc(f.url)}" target="_blank" rel="noopener">查看</a>` : ""}
@@ -208,8 +208,7 @@ function cardHtml(i) {
   const steam = steamHeader(i);
   const year = (i.category === "movie" || i.category === "tv") && /^\d{4}$/.test(i.extra?.year || "") ? `<span class="cv-year">${i.extra.year}</span>` : "";
   const code = i.category === "coupon" && i.extra?.code ? `<span class="cv-code">${esc(i.extra.code)}</span>` : "";
-  return `
-  <article class="card ${stateOf(i)}" data-id="${i.id}" data-cat="${esc(i.category)}" style="--c:${c.hue}">
+  const cover = `
     <div class="cover cv-${esc(i.category)}${steam ? " has-img" : ""}">
       ${steam ? `<img class="cv-img" src="${steam}" alt="" loading="lazy" onerror="this.parentNode.classList.remove('has-img');this.remove()">` : ""}
       ${svgIcon(c.icon, "cv-mark")}${year}${code}
@@ -221,17 +220,73 @@ function cardHtml(i) {
         <h3 class="card-title">${esc(i.title)}</h3>
         ${sub ? `<p class="cv-sub">${esc(sub)}</p>` : ""}
       </div>
-    </div>
+    </div>`;
+  const doneBtn = ro || (doneHidden(i.category) && !i.done) ? "" : `<button data-act="done" class="btn-done ${i.done ? "is-done" : ""}">${i.done ? "撤回" : "已实现"}</button>`;
+  return { c, cover, metas: extras + kind + aliases + downloads + link, owned, send, ro, doneBtn };
+}
+
+// 卡片只放要点：备注最多三行，点卡片打开详情看全部
+function cardHtml(i) {
+  const { c, cover, metas, owned, send, ro, doneBtn } = parts(i);
+  return `
+  <article class="card st-${stateOf(i)}" data-id="${i.id}" data-cat="${esc(i.category)}" style="--c:${c.hue}" title="点击查看详情">
+    ${cover}
     <div class="card-body">
-      ${note}${metas ? `<div class="metas">${metas}</div>` : ""}
+      ${i.note ? `<p class="note">${esc(i.note)}</p>` : ""}${metas ? `<div class="metas">${metas}</div>` : ""}
       ${owned}${send}
       <div class="card-foot">
         <span class="time">${i.done ? `实现于 ${fmtTime(i.doneAt).slice(0, 10)}` : `收藏于 ${fmtTime(i.createdAt).slice(0, 10)}`}</span>
         ${ro ? `<span class="from">来自 Steamless</span>` : `<button data-act="edit" class="text-btn">编辑</button>`}
-        ${ro || (doneHidden(i.category) && !i.done) ? "" : `<button data-act="done" class="btn-done ${i.done ? "is-done" : ""}">${i.done ? "撤回" : "已实现"}</button>`}
+        ${doneBtn}
       </div>
     </div>
   </article>`;
+}
+
+// 详情：大封面、完整的备注和字段、原截图、时间和来源
+function detailHtml(i) {
+  const { c, cover, metas, owned, send, ro, doneBtn } = parts(i);
+  const times = [
+    ["收藏于", fmtTime(i.createdAt)],
+    i.done && ["实现于", fmtTime(i.doneAt)],
+    i.updatedAt && i.updatedAt !== i.createdAt && ["修改于", fmtTime(i.updatedAt)],
+    SOURCES[i.source] && ["来源", SOURCES[i.source]],
+  ].filter(Boolean);
+  return `
+  <article class="detail-card st-${stateOf(i)}" data-id="${i.id}" style="--c:${c.hue}">
+    ${cover}
+    <button type="button" class="detail-close" data-close aria-label="关闭">${svgIcon('<path d="M6 6l12 12M18 6 6 18"/>')}</button>
+    <div class="detail-body">
+      ${i.note ? `<p class="detail-note">${esc(i.note)}</p>` : ""}
+      ${metas ? `<div class="metas">${metas}</div>` : ""}
+      ${owned}${send}
+      ${i.shots?.length ? `<div class="detail-section"><h4>原截图</h4><div class="detail-shots" data-shots>${i.shots.map((id) => `<button type="button" class="shot-thumb" data-act="shots" data-shot="${esc(id)}"></button>`).join("")}</div></div>` : ""}
+      <dl class="detail-times">${times.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl>
+      <div class="dlg-actions">
+        ${doneBtn}
+        <span class="spacer"></span>
+        <button type="button" class="ghost" data-close>关闭</button>
+        ${ro ? `<span class="from">Steamless 同步过来的，在 Steamless 里修改</span>` : `<button type="button" data-act="edit" class="primary">编辑</button>`}
+      </div>
+    </div>
+  </article>`;
+}
+
+let detailId = null;
+function openDetail(item) {
+  detailId = item.id;
+  renderDetail();
+  if (!$("#dlgDetail").open) $("#dlgDetail").showModal();
+  $("#dlgDetail").scrollTop = 0;
+}
+function renderDetail() {
+  const item = live().find((i) => i.id === detailId);
+  if (!item) { $("#dlgDetail").close(); return; }
+  $("#detailBody").innerHTML = detailHtml(item);
+  // 原截图缩略图：本机没有的从云端下载一次
+  for (const b of $$("#detailBody [data-shot]")) {
+    loadShot(b.dataset.shot).then((src) => { if (src) b.style.backgroundImage = `url("${src}")`; else b.classList.add("missing"); }).catch(() => b.classList.add("missing"));
+  }
 }
 
 
@@ -240,7 +295,7 @@ function hostOf(u) {
   try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return u; }
 }
 
-function render() { renderTabs(); renderList(); }
+function render() { renderTabs(); renderList(); if ($("#dlgDetail").open) renderDetail(); }
 
 // ---------- 交互 ----------
 $("#catTabs").addEventListener("click", (e) => {
@@ -259,10 +314,8 @@ $("#statusSeg").addEventListener("click", (e) => {
 $("#search").addEventListener("input", (e) => { ui.q = e.target.value; renderList(); });
 $("#sort").addEventListener("change", (e) => { ui.sort = e.target.value; renderList(); });
 
-$("#list").addEventListener("click", (e) => {
-  const card = e.target.closest(".card");
-  if (!card) return;
-  const item = items.find((i) => i.id === card.dataset.id);
+function onItemClick(e, box) {
+  const item = items.find((i) => i.id === box.dataset.id);
   if (!item) return;
   const star = e.target.closest("[data-n]");
   if (star) {
@@ -272,14 +325,23 @@ $("#list").addEventListener("click", (e) => {
   }
   const actor = e.target.closest("[data-act]");
   const act = actor?.dataset.act;
-  if (act === "edit") openEdit(item);
-  if (act === "shots") openShots(item);
-  if (act === "reject") rejectFulfill(item, actor.dataset.app);
-  if (act === "done") {
+  if (act === "edit") { $("#dlgDetail").close(); openEdit(item); }
+  else if (act === "shots") openShots(item);
+  else if (act === "reject") rejectFulfill(item, actor.dataset.app);
+  else if (act === "done") {
     const done = !item.done;
     upsert({ ...item, done, doneAt: done ? now() : null });
     toast(done ? "🎉 已实现！可以在「已实现」里找到它" : "已移回待实现");
-  }
+  } else if (!actor && box.classList.contains("card") && !e.target.closest("a, button")) openDetail(item);
+}
+$("#list").addEventListener("click", (e) => {
+  const card = e.target.closest(".card");
+  if (card) onItemClick(e, card);
+});
+$("#detailBody").addEventListener("click", (e) => {
+  const box = e.target.closest(".detail-card");
+  if (e.target.closest("[data-close]")) $("#dlgDetail").close();
+  else if (box) onItemClick(e, box);
 });
 
 // ---------- 编辑弹窗 ----------

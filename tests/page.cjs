@@ -68,6 +68,21 @@ const tick = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   assert.ok(!g1.querySelector('[data-act="edit"]') && !g1.querySelector('[data-n]'), 'steamless games are read-only');
   console.log('PASS legacy download link migrated, send-to-download link, done hidden for novels, games read-only');
 
+  const c1 = $('[data-id="c1"]');
+  assert.ok(c1.classList.contains('st-todo') && !c1.classList.contains('owned'), 'card state classes do not clash with the owned row');
+  c1.querySelector('.cover').click();
+  assert.ok($('#dlgDetail').open, 'clicking a card opens its details');
+  assert.equal($('#detailBody .card-title').textContent, '券');
+  assert.match($('#detailBody .detail-times').textContent, /收藏于/);
+  $('#detailBody [data-act="edit"]').click();
+  assert.ok(!$('#dlgDetail').open && $('#dlgEdit').open, 'edit from the details');
+  $('#dlgEdit').close();
+  $('[data-id="g1"] .cover').click();
+  assert.ok($('#dlgDetail').open && !$('#detailBody [data-act="edit"]'), 'Steamless games open read-only');
+  $('#detailBody .detail-close').click();
+  assert.ok(!$('#dlgDetail').open);
+  console.log('PASS a click on a card opens its details, with edit; Steamless ones read-only');
+
   $('[data-status="owned"]').click();
   const n2 = $('[data-id="n2"]');
   assert.match(n2.textContent, /已拥有 · 书屿：已下好的书 · 2026-0\d-\d\d/);
