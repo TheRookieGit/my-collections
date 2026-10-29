@@ -39,6 +39,7 @@ w.createClient = () => ({
     if (name === 'mc_pull') return { data: [], error: null };
     if (name === 'mc_fulfill_pull') return { data: fulfillRows, error: null };
     if (name === 'mc_agent_list') return { data: [{ id: 'a1', name: '书屿 Windows', app: 'shuyu', createdAt: ts, lastSeen: null, revoked: false }], error: null };
+    if (name === 'mc_agent_create' && args.p_app === 'foodcollection') return { data: null, error: { code: '22023', message: 'unknown app' } };
     if (name === 'mc_agent_create') return { data: { id: 'a2', token: 'mch_' + '0'.repeat(48), app: args.p_app, name: 'x' }, error: null };
     if (name === 'mc_get_config') return { data: structuredClone(config), error: null };
     if (name === 'mc_set_config') { Object.assign(config, args.p_data); return { data: null, error: null }; }
@@ -176,6 +177,10 @@ const tick = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   assert.equal(rpcs.find((r) => r[0] === 'mc_agent_create')[1].p_app, 'plexus');
   assert.match($('#pairCode').textContent, /mch_0{48}/);
   assert.ok($('[name="hide_novel"]').checked && !$('[name="hide_movie"]').checked);
+  // A failed pairing says why beside the button, not only in a toast the dialog could cover.
+  $('#pairApp').value = 'foodcollection'; $('#btnPair').click(); await tick();
+  assert.match($('#pairCode').textContent, /没能生成配对码：云端还没执行最新的迁移（004_foodcollection\.sql）/);
+  $('#pairApp').value = 'shuyu';
   console.log('PASS settings: devices listed and paired, offline Windows reported, done hidden per category');
 
   // Which categories hide 「已实现」 is shared by every device: this one's goes up first, a later change elsewhere wins.

@@ -117,6 +117,8 @@ let toastTimer;
 function toast(msg) {
   const t = $("#toast");
   t.textContent = msg;
+  // Shown again each time, so it goes above whatever dialog is open now
+  try { t.hidePopover?.(); t.showPopover?.(); } catch {}
   t.classList.add("show");
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove("show"), 2600);
@@ -933,7 +935,12 @@ $("#btnPair").addEventListener("click", async () => {
   if (!cfg.syncPass) return toast("请先填写同步密码");
   const app = $("#pairApp").value;
   const { data, error } = await sb.rpc("mc_agent_create", { p_pass: cfg.syncPass, p_name: $("#pairName").value.trim(), p_app: app });
-  if (error) return toast(syncError(error));
+  if (error) {
+    // Said right here too: it is the first thing seen after the click
+    $("#pairCode").hidden = false;
+    $("#pairCode").innerHTML = `<p class="warn small">没能生成配对码：${esc(syncError(error))}</p>`;
+    return toast(syncError(error));
+  }
   $("#pairCode").hidden = false;
   $("#pairCode").innerHTML = `<p class="small">在${esc(APPS[app].name)}的设置里粘贴这个配对码（只显示这一次）：</p>
     <div class="row"><code id="pairToken">${esc(data.token)}</code><button type="button" class="ghost" id="btnCopyPair">复制</button></div>`;

@@ -541,6 +541,8 @@ dialog label.check {
   box-shadow: 0 12px 30px -10px rgba(0,0,0,.4);
 }
 .toast.show { opacity: 1; transform: translateX(-50%); }
+/* A manual popover sits in the top layer, so the toast shows above an open dialog too */
+.toast[popover] { inset: auto; margin: 0; border: 0; overflow: visible; left: 50%; bottom: 96px; }
 
 @media (max-width: 640px) {
   .topbar, .cat-tabs, .toolbar, .list { --gutter: 18px; }
