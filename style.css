@@ -186,7 +186,7 @@ code { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: .9e
 .list .card:nth-child(4) { animation-delay: .12s; } .list .card:nth-child(5) { animation-delay: .16s; }
 .list .card:nth-child(n+6) { animation-delay: .2s; }
 
-/* 封面：标题压在上面；有图（Steam 横幅、原截图）用图，没图用分类自己的纹样 */
+/* 封面：标题压在上面；Steam 游戏用商店横幅，其余用分类自己的纹样 */
 .cover {
   position: relative; isolation: isolate; overflow: hidden; aspect-ratio: 16 / 10;
   display: flex; flex-direction: column; justify-content: space-between; gap: 10px;
@@ -194,7 +194,6 @@ code { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: .9e
 }
 .cv-img { position: absolute; inset: 0; z-index: -2; width: 100%; height: 100%; object-fit: cover; transition: transform .6s cubic-bezier(.2,.7,.2,1); animation: fade .5s ease both; }
 .card:hover .cv-img { transform: scale(1.04); }
-.cover.is-shot .cv-img { object-position: center 26%; }
 @keyframes fade { from { opacity: 0; } }
 .cover.has-img::after {
   content: ""; position: absolute; inset: 0; z-index: -1;

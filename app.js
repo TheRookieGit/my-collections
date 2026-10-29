@@ -160,7 +160,6 @@ function renderList() {
     return;
   }
   $("#list").innerHTML = list.map(cardHtml).join("");
-  watchCovers();
 }
 
 // 封面上标题下面那行：每个分类最想一眼看到的
@@ -179,7 +178,7 @@ function coverSub(i) {
   }
 }
 
-// 封面图：Steam 游戏用商店横幅，截图收藏的用原截图（滚动到时才加载），其余用分类自己的纹样
+// 封面图：Steam 游戏用商店横幅，其余用分类自己的纹样。截图不当封面：截下来的多半是整屏，不是海报
 const steamHeader = (i) => i.externalIds?.steamAppId ? `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${Number(i.externalIds.steamAppId)}/header.jpg` : "";
 
 function cardHtml(i) {
@@ -211,7 +210,7 @@ function cardHtml(i) {
   const code = i.category === "coupon" && i.extra?.code ? `<span class="cv-code">${esc(i.extra.code)}</span>` : "";
   return `
   <article class="card ${stateOf(i)}" data-id="${i.id}" data-cat="${esc(i.category)}" style="--c:${c.hue}">
-    <div class="cover cv-${esc(i.category)}${steam ? " has-img" : ""}"${!steam && i.shots?.length ? ` data-shot="${esc(i.shots[0])}"` : ""}>
+    <div class="cover cv-${esc(i.category)}${steam ? " has-img" : ""}">
       ${steam ? `<img class="cv-img" src="${steam}" alt="" loading="lazy" onerror="this.parentNode.classList.remove('has-img');this.remove()">` : ""}
       ${svgIcon(c.icon, "cv-mark")}${year}${code}
       <div class="cv-top">
@@ -235,25 +234,6 @@ function cardHtml(i) {
   </article>`;
 }
 
-// 截图收藏的封面：卡片滚动到眼前才去读原截图（本机没有时从云端下载一次，之后存在本机）
-const coverSeen = "IntersectionObserver" in window ? new IntersectionObserver((entries) => {
-  for (const e of entries) {
-    if (!e.isIntersecting) continue;
-    coverSeen.unobserve(e.target);
-    const box = e.target;
-    loadShot(box.dataset.shot).then((src) => {
-      if (!src || !box.isConnected) return;
-      const img = new Image();
-      img.className = "cv-img";
-      img.alt = "";
-      img.onload = () => { box.prepend(img); box.classList.add("has-img", "is-shot"); };
-      img.src = src;
-    }).catch(() => {});
-  }
-}, { rootMargin: "300px" }) : null;
-function watchCovers() {
-  if (coverSeen) for (const box of $$("#list .cover[data-shot]")) coverSeen.observe(box);
-}
 
 // 链接在卡片上只显示域名：pan.quark.cn、store.steampowered.com
 function hostOf(u) {
