@@ -18,6 +18,8 @@
   --accent-soft: #F5E6E0;
   --done: #4F7558;
   --done-soft: #E6EEE4;
+  --owned: #9A3354;
+  --owned-soft: #FBE7EC;
   --danger: #A63A2E;
   --shadow: 0 1px 0 rgba(29,27,24,.03), 0 1px 2px rgba(29,27,24,.04), 0 8px 24px -12px rgba(29,27,24,.10);
   --shadow-hover: 0 1px 0 rgba(29,27,24,.03), 0 2px 4px rgba(29,27,24,.05), 0 18px 40px -16px rgba(29,27,24,.22);
@@ -46,6 +48,8 @@
     --accent-soft: #33221D;
     --done: #8DB596;
     --done-soft: #1F2A21;
+    --owned: #F2A9BC;
+    --owned-soft: #3A2129;
     --danger: #E28474;
     --shadow: 0 1px 0 rgba(255,255,255,.02), 0 10px 30px -18px rgba(0,0,0,.7);
     --shadow-hover: 0 1px 0 rgba(255,255,255,.03), 0 22px 44px -20px rgba(0,0,0,.85);
@@ -162,9 +166,10 @@ code { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: .9e
 .seg button.active { background: var(--card); color: var(--text); box-shadow: 0 1px 2px rgba(29,27,24,.08), 0 2px 8px -2px rgba(29,27,24,.08); }
 .seg button.active b { color: var(--gold); }
 /* 选中「已拥有」「已实现」时，切换按钮也换成对应的颜色 */
-.seg button[data-status="owned"].active { background: #3F7A50; color: #fff; }
+.seg button[data-status="owned"].active { background: #F2B5C4; color: #7E2440; }
 .seg button[data-status="done"].active { background: #A9822F; color: #fff; }
-.seg button[data-status="owned"].active b, .seg button[data-status="done"].active b { color: rgba(255,255,255,.8); }
+.seg button[data-status="owned"].active b { color: rgba(126,36,64,.7); }
+.seg button[data-status="done"].active b { color: rgba(255,255,255,.8); }
 .search { flex: 1; min-width: 180px; position: relative; display: flex; align-items: center; }
 .search svg { position: absolute; left: 14px; color: var(--faint); pointer-events: none; }
 .search input { padding-left: 38px; border-radius: 999px; background: var(--card); border-color: var(--line); }
@@ -339,19 +344,19 @@ code { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: .9e
         conic-gradient(from -45deg at 50% 100%, #000 90deg, #0000 0) bottom / 14px 8px repeat-x;
 }
 
-/* 已拥有：绿色印章、绿边；已实现：金色印章、封面褪色 */
+/* 已拥有：浅粉色印章、粉边；已实现：金色印章、封面褪色 */
 .cv-stamp {
   position: absolute; z-index: 1; right: 16px; top: 31.25cqw; width: 76px; height: 76px; border-radius: 50%;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
-  transform: translateY(-46%) rotate(-12deg); color: #fff; text-align: center; pointer-events: none;
+  transform: translateY(-46%) rotate(-12deg); color: var(--stamp-ink, #fff); text-align: center; pointer-events: none;
   background: color-mix(in srgb, var(--stamp) 88%, transparent);
-  box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--stamp) 88%, transparent), inset 0 0 0 4.5px rgba(255,255,255,.85), 0 8px 20px -8px rgba(0,0,0,.5);
+  box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--stamp) 88%, transparent), inset 0 0 0 4.5px var(--stamp-ring, rgba(255,255,255,.85)), 0 8px 20px -8px rgba(0,0,0,.5);
   animation: stamp .45s cubic-bezier(.3,1.6,.5,1) both .15s;
 }
 .cv-stamp b { font-family: var(--serif); font-size: 15px; font-weight: 700; letter-spacing: .08em; }
 .cv-stamp small { font-size: 10px; opacity: .9; letter-spacing: .04em; max-width: 60px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @keyframes stamp { from { opacity: 0; transform: translateY(-46%) rotate(-12deg) scale(1.6); } }
-.st-owned { --stamp: #3F7A50; }
+.st-owned { --stamp: #F2B5C4; --stamp-ink: #7E2440; --stamp-ring: rgba(126,36,64,.45); }
 .st-done { --stamp: #A9822F; }
 .st-owned .cv-text, .st-done .cv-text { padding-right: 84px; }
 .card, .detail-card { container-type: inline-size; }
@@ -376,11 +381,11 @@ code { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: .9e
 
 .owned {
   display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 13px;
-  padding: 9px 12px; border-radius: 12px; background: var(--done-soft); color: var(--done); word-break: break-word;
+  padding: 9px 12px; border-radius: 12px; background: var(--owned-soft); color: var(--owned); word-break: break-word;
 }
 .owned-text::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: currentColor; margin: 0 8px 2px 0; }
 .owned-text { flex: 1 1 100%; }
-.owned a { color: var(--done); font-weight: 600; }
+.owned a { color: var(--owned); font-weight: 600; }
 .owned .link-btn { color: var(--muted); }
 .send {
   align-self: flex-start; font-size: 13px; font-weight: 600; text-decoration: none; color: #fff;
