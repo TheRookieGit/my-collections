@@ -4,7 +4,7 @@ and report which it already has.
 The hub keeps its data in Supabase behind RPCs. An app pairs once with a device token made in the hub's settings;
 the token is kept encrypted with DPAPI in %LOCALAPPDATA%\\CollectionKit\\hub.json, one per app, beside the shared drive
 sign-ins. Nothing here may stop the app working: while the hub cannot be reached, what the app sends waits in
-hub.sqlite3 and goes out on the next flush(). The wishes' original screenshots are kept in shots\ beside it once seen,
+hub.sqlite3 and goes out on the next flush(). The wishes' original screenshots are kept in the shots folder beside it once seen,
 shared by the apps on this computer."""
 from __future__ import annotations
 
