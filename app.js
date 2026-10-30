@@ -453,7 +453,7 @@ form.addEventListener("submit", (e) => {
   toast(editing ? "已保存" : "已收藏 ⭐");
 });
 $("#btnDelete").addEventListener("click", () => {
-  if (!editing) return;
+  if (!editing || !confirm(`删掉「${editing.title}」？连接了的设备里也会一起删掉。`)) return;
   // 软删除：保留墓碑，便于多设备同步
   upsert({ ...editing, deleted: true });
   $("#dlgEdit").close();
@@ -955,6 +955,7 @@ $("#agentList").addEventListener("click", async (e) => {
   // 已吊销的记录可以删掉，列表里不再显示
   const del = e.target.closest("[data-delete]");
   if (del) {
+    if (!confirm("删掉这条已吊销的配对记录？")) return;
     const { error } = await sb.rpc("mc_agent_delete", { p_pass: cfg.syncPass, p_id: del.dataset.delete });
     if (error) return toast(syncError(error));
     return loadAgents();

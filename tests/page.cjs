@@ -187,7 +187,9 @@ const tick = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   // A revoked pairing can be deleted from the list; one in use only revoked.
   assert.match($('#agentList').textContent, /foodcollection · FoodCollection/);
   assert.ok(!$('[data-delete="a1"]') && $('[data-revoke="a1"]'));
-  $('[data-delete="a0"]').click(); await tick();
+  w.confirm = () => false; $('[data-delete="a0"]').click(); await tick();
+  assert.ok(!rpcs.some((r) => r[0] === 'mc_agent_delete'), 'nothing deleted when cancelled');
+  w.confirm = () => true; $('[data-delete="a0"]').click(); await tick();
   assert.equal(rpcs.filter((r) => r[0] === 'mc_agent_delete').at(-1)[1].p_id, 'a0');
   assert.doesNotMatch($('#agentList').textContent, /foodcollection/);
   console.log('PASS settings: devices listed and paired, offline Windows reported, done hidden per category');
