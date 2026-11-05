@@ -68,6 +68,7 @@ const LS_DATA = "mc.items.v1";
 const LS_CFG = "mc.config.v1";
 const LS_FULFILL = "mc.fulfill.v1";
 const LS_IMPORTS = "mc.imports.v1";
+const LS_IMPORT_DELETES = "mc.importDeletes.v1";
 
 function lsGet(key, fallback) {
   try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; }
@@ -81,6 +82,8 @@ let cfg = lsGet(LS_CFG, { apiKey: "", syncPass: "" });
 // 各应用回报的「已拥有」（mc_fulfill），和收藏分开存：收藏按 updatedAt 整条覆盖，写在一起会互相冲掉
 let fulfill = lsGet(LS_FULFILL, []);
 let imports = lsGet(LS_IMPORTS, []); // 截图导入记录：{ id, at, uploaded, accepted, dirty }，dirty 是还没传到云端的
+let importDeletes = lsGet(LS_IMPORT_DELETES, []); // 删掉了、还没从云端删的记录 id
+const importPicked = new Set();
 const ui = { cat: "all", status: "todo", q: "", sort: "created-desc" };
 
 const isArchive = (cat) => !!CATS[cat]?.archive;
@@ -836,13 +839,57 @@ function recordImport() {
 }
 function renderImports() {
   const uploaded = imports.reduce((n, x) => n + x.uploaded, 0), accepted = imports.reduce((n, x) => n + x.accepted, 0);
+  for (const id of importPicked) if (!imports.some((x) => x.id === id)) importPicked.delete(id);
+  $("#cntImports").textContent = uploaded;
   $("#importSummary").textContent = imports.length ? `累计上传 ${uploaded} 张：已保存 ${accepted} 张，未保存 ${uploaded - accepted} 张` : "";
   $("#importList").innerHTML = imports.length ? imports.map((x) => `
-    <li><span><b>${esc(fmtTime(x.at))}</b><br>
+    <li><input type="checkbox" data-import="${esc(x.id)}" aria-label="选中 ${esc(fmtTime(x.at))} 的记录" ${importPicked.has(x.id) ? "checked" : ""}>
+      <span><b>${esc(fmtTime(x.at))}</b><br>
       <span class="muted small">上传 ${x.uploaded} 张 · 已保存 ${x.accepted} 张 · 未保存 ${x.uploaded - x.accepted} 张</span></span></li>`).join("")
     : `<li class="muted small">还没有导入过截图。</li>`;
+  renderImportPicked();
 }
+function renderImportPicked() {
+  const n = importPicked.size, all = $("#importAll");
+  all.disabled = !imports.length;
+  all.checked = !!imports.length && n === imports.length;
+  all.indeterminate = n > 0 && n < imports.length;
+  $("#btnImportDelete").disabled = !n;
+  $("#btnImportDelete").textContent = n ? `删除选中的 ${n} 条` : "删除选中";
+}
+$("#btnImports").addEventListener("click", () => { renderImports(); $("#dlgImports").showModal(); });
+$("#importList").addEventListener("change", (e) => {
+  const id = e.target.dataset.import;
+  if (!id) return;
+  if (e.target.checked) importPicked.add(id); else importPicked.delete(id);
+  renderImportPicked();
+});
+$("#importAll").addEventListener("change", (e) => {
+  importPicked.clear();
+  if (e.target.checked) imports.forEach((x) => importPicked.add(x.id));
+  renderImports();
+});
+$("#btnImportDelete").addEventListener("click", () => {
+  const ids = [...importPicked];
+  if (!ids.length || !confirm(`删除这 ${ids.length} 条导入记录？只删记录，已保存的收藏和小票不受影响，累计数字会跟着减少。`)) return;
+  if (importRun && ids.includes(importRun.id)) importRun = null; // 还开着的这次不再写回来
+  imports = imports.filter((x) => !ids.includes(x.id));
+  importDeletes = [...new Set([...importDeletes, ...ids])];
+  importPicked.clear();
+  lsSet(LS_IMPORTS, imports);
+  lsSet(LS_IMPORT_DELETES, importDeletes);
+  renderImports();
+  scheduleSync();
+  toast(`已删除 ${ids.length} 条记录`);
+});
 async function syncImports() {
+  if (importDeletes.length) {
+    const ids = importDeletes;
+    const { error } = await sb.rpc("mc_import_delete", { p_pass: cfg.syncPass, p_ids: ids });
+    if (error) throw error;
+    importDeletes = importDeletes.filter((id) => !ids.includes(id));
+    lsSet(LS_IMPORT_DELETES, importDeletes);
+  }
   const dirty = imports.filter((x) => x.dirty);
   if (dirty.length) {
     const { error } = await sb.rpc("mc_import_put", { p_pass: cfg.syncPass, p_rows: dirty.map(({ dirty: _, ...x }) => x) });
@@ -854,7 +901,7 @@ async function syncImports() {
   if (error) throw error;
   if (!data) return;
   const waiting = imports.filter((x) => x.dirty);
-  imports = [...waiting, ...data.filter((r) => !waiting.some((x) => x.id === r.id))]
+  imports = [...waiting, ...data.filter((r) => !waiting.some((x) => x.id === r.id) && !importDeletes.includes(r.id))]
     .sort((a, b) => new Date(b.at) - new Date(a.at));
   lsSet(LS_IMPORTS, imports);
   renderImports();
@@ -1114,7 +1161,6 @@ function openSettings() {
   sform.apiKey.value = cfg.apiKey || "";
   sform.syncPass.value = cfg.syncPass || "";
   sform.receiptPass.value = cfg.receiptPass || "";
-  renderImports();
   $("#hideDone").innerHTML = Object.entries(CATS).filter(([k]) => !isArchive(k)).map(([k, c]) =>
     `<label class="check"><input type="checkbox" name="hide_${k}" ${doneHidden(k) ? "checked" : ""}>${c.name}</label>`).join("");
   $("#shuyuServer").value = shuyuServer();
@@ -1464,6 +1510,7 @@ async function doSync(manual) {
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") sync(); });
 
 render();
+renderImports();
 sync();
 handleShareHash();
 checkClipboard();

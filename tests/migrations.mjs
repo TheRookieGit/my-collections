@@ -12,10 +12,10 @@ await db.exec(`create schema extensions; create role anon; create role authentic
   -- Supabase grants new tables and sequences to anon by default; the migrations must take that back.
   alter default privileges in schema public grant all on tables to anon, authenticated;
   alter default privileges in schema public grant all on sequences to anon, authenticated;`);
-const files = ['001_base.sql', '002_wish_hub.sql', '003_shots.sql', '004_foodcollection.sql', '005_agent_delete.sql', '006_clipcollections.sql', '007_import_log.sql'];
+const files = ['001_base.sql', '002_wish_hub.sql', '003_shots.sql', '004_foodcollection.sql', '005_agent_delete.sql', '006_clipcollections.sql', '007_import_log.sql', '008_import_delete.sql'];
 for (let round = 0; round < 2; round++) for (const f of files) await db.exec(readFileSync(new URL(f, dir), 'utf8'));
 console.log('PASS migrations run twice');
-assert.deepEqual((await db.query('select name from public.mc_migrations order by name')).rows.map((r) => r.name), ['001_base', '002_wish_hub', '003_shots', '004_foodcollection', '005_agent_delete', '006_clipcollections', '007_import_log']);
+assert.deepEqual((await db.query('select name from public.mc_migrations order by name')).rows.map((r) => r.name), ['001_base', '002_wish_hub', '003_shots', '004_foodcollection', '005_agent_delete', '006_clipcollections', '007_import_log', '008_import_delete']);
 await db.exec(`insert into public.mc_secret (id, hash) values (1, extensions.crypt('pw', extensions.gen_salt('bf', 4)))`);
 
 const anon = async (sql, params) => { await db.exec('set role anon'); try { return (await db.query(sql, params)).rows; } finally { await db.exec('reset role'); } };
@@ -150,5 +150,8 @@ await anon('select public.mc_import_put($1, $2)', ['pw', log('i1', '2026-03-01T1
 await fails('select public.mc_import_put($1, $2)', ['pw', log('i3', '2026-03-03T10:00:00Z', 1, 2)], '23514');
 await fails("select public.mc_import_list('wrong')", [], '28P01');
 assert.deepEqual((await one("select public.mc_import_list('pw')")).map((r) => [r.id, r.uploaded, r.accepted]), [['i2', 1, 0], ['i1', 3, 2]], 'newest first, and a stale device cannot lower the count');
-console.log('PASS the import log updates by id and is closed without the password');
+await fails("select public.mc_import_delete('wrong', array['i2'])", [], '28P01');
+await anon("select public.mc_import_delete('pw', array['i2', 'missing'])");
+assert.deepEqual((await one("select public.mc_import_list('pw')")).map((r) => r.id), ['i1'], 'deleting only touches the rows named');
+console.log('PASS the import log updates by id, deletes in bulk, and is closed without the password');
 console.log('PASS ten wrong passwords in a row lock password calls for 15 minutes, counted despite the rollback');

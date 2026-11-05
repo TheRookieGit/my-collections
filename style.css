@@ -547,9 +547,12 @@ dialog label.check {
 .agent-list li:last-child, .nd-list li:last-child { border-bottom: 0; }
 .agent-list li > span, .nd-list li > span:nth-child(2) { flex: 1; min-width: 0; word-break: break-word; }
 .agent-list li.revoked { opacity: .5; }
-.import-list { max-height: 260px; overflow-y: auto; }
-#importSummary { margin: 0; }
+.import-list { max-height: 46vh; overflow-y: auto; }
+.import-list input[type=checkbox], .import-all input[type=checkbox] { width: auto; flex: none; }
+#importSummary { margin: 0; font-weight: 600; }
 #importSummary:empty { display: none; }
+.imports-btn { height: 40px; background: var(--card); border-color: var(--line); white-space: nowrap; }
+.imports-btn b { font-weight: 700; font-variant-numeric: tabular-nums; }
 .agent-list button, .nd-list button { padding: 5px 12px; font-size: 13px; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line-strong); flex: none; }
 .dot.on { background: var(--done); box-shadow: 0 0 0 3px var(--done-soft); }
