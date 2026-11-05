@@ -90,7 +90,6 @@ button:hover { border-color: var(--ink); }
 button:active { transform: translateY(1px); }
 button.primary { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
 button.primary:hover { box-shadow: 0 6px 18px -8px rgba(29,27,24,.5); }
-a.btn-link { display: inline-block; border: 1px solid var(--ink); border-radius: 999px; padding: 7px 16px; background: var(--ink); color: var(--on-ink); font-size: 14px; font-weight: 500; text-decoration: none; }
 button.ghost { background: transparent; }
 button.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); background: transparent; }
 button.danger:hover { border-color: var(--danger); }

@@ -12,20 +12,19 @@ await db.exec(`create schema extensions; create role anon; create role authentic
   -- Supabase grants new tables and sequences to anon by default; the migrations must take that back.
   alter default privileges in schema public grant all on tables to anon, authenticated;
   alter default privileges in schema public grant all on sequences to anon, authenticated;`);
-const files = ['001_base.sql', '002_wish_hub.sql', '003_shots.sql', '004_foodcollection.sql', '005_agent_delete.sql', '006_clipcollections.sql', '007_inbox.sql'];
+const files = ['001_base.sql', '002_wish_hub.sql', '003_shots.sql', '004_foodcollection.sql', '005_agent_delete.sql', '006_clipcollections.sql'];
 for (let round = 0; round < 2; round++) for (const f of files) await db.exec(readFileSync(new URL(f, dir), 'utf8'));
 console.log('PASS migrations run twice');
-assert.deepEqual((await db.query('select name from public.mc_migrations order by name')).rows.map((r) => r.name), ['001_base', '002_wish_hub', '003_shots', '004_foodcollection', '005_agent_delete', '006_clipcollections', '007_inbox']);
+assert.deepEqual((await db.query('select name from public.mc_migrations order by name')).rows.map((r) => r.name), ['001_base', '002_wish_hub', '003_shots', '004_foodcollection', '005_agent_delete', '006_clipcollections']);
 await db.exec(`insert into public.mc_secret (id, hash) values (1, extensions.crypt('pw', extensions.gen_salt('bf', 4)))`);
 
 const anon = async (sql, params) => { await db.exec('set role anon'); try { return (await db.query(sql, params)).rows; } finally { await db.exec('reset role'); } };
 const one = async (sql, params) => Object.values((await anon(sql, params))[0])[0];
 const fails = async (sql, params, code) => { await assert.rejects(anon(sql, params), (e) => { assert.equal(e.code, code, e.message); return true; }); };
 
-assert.equal(await one('select public.mc_api_version()'), 4);
+assert.equal(await one('select public.mc_api_version()'), 3);
 await fails('select * from public.items', [], '42501');
 await fails('select * from public.mc_agents', [], '42501');
-await fails('select * from public.mc_inbox', [], '42501');
 await fails("select public.mc_check('pw')", [], '42501');
 await fails("select public.mc_agent_check('x')", [], '42501');
 await fails("select nextval('public.mc_check_failures')", [], '42501');
@@ -141,30 +140,4 @@ const hub = await one("select public.mc_agent_create('pw', '', 'hub')");
 assert.ok((await one('select public.mc_wishes($1, $2, $3)', [hub.token, null, null])).items.some((i) => i.category === 'news'), 'a hub pairing covers news too');
 assert.equal((await one('select public.mc_wishes($1, $2, $3)', [plexus.token, null, null])).items.some((i) => i.category === 'news'), false, 'other apps do not see news');
 console.log('PASS clipcollections reads and writes news only, reports saved through mc_fulfill, and news stays out of other apps');
-
-const phone = await one("select public.mc_agent_create('pw', 'iPhone', 'shortcut')");
-const png = 'data:image/jpeg;base64,AAAA';
-assert.equal(await one('select public.mc_inbox_put($1, $2)', [phone.token, png]), 'mc-inbox-ok');
-await fails('select public.mc_inbox_put($1, $2)', ['mch_nope', png], '28000');
-await fails('select public.mc_inbox_put($1, $2)', [clip.token, png], '42501');
-await fails('select public.mc_inbox_put($1, $2)', [phone.token, 'hello'], '22023');
-await fails('select public.mc_inbox_put($1, $2)', [phone.token, 'data:image/jpeg;base64,' + 'A'.repeat(4000000)], '22023');
-assert.deepEqual((await one('select public.mc_wishes($1, $2, $3)', [phone.token, null, null])).items, [], 'a shortcut reads no category');
-await fails('select public.mc_wish_put($1, $2)', [phone.token, JSON.stringify(item('p1', 'novel', 'x', '2026-02-02T00:00:00Z'))], '42501');
-assert.equal(await one('select public.mc_inbox_status($1)', [phone.token]), 'mc-inbox-pending:1', 'photos stay in the album while anything is unreviewed');
-await fails('select public.mc_inbox_status($1)', ['mch_nope'], '28000');
-await fails('select public.mc_inbox_status($1)', [clip.token], '42501');
-await fails("select public.mc_inbox_list('wrong')", [], '28P01');
-let ids = await one("select public.mc_inbox_list('pw')");
-assert.equal(ids.length, 1);
-await fails('select public.mc_inbox_get($1, $2)', ['wrong', ids[0]], '28P01');
-assert.equal(await one('select public.mc_inbox_get($1, $2)', ['pw', ids[0]]), png);
-for (let n = 1; n < 50; n++) await one('select public.mc_inbox_put($1, $2)', [phone.token, png]);
-await fails('select public.mc_inbox_put($1, $2)', [phone.token, png], 'MC413');
-await anon('select public.mc_inbox_delete($1, $2)', ['pw', ids[0]]);
-ids = await one("select public.mc_inbox_list('pw')");
-assert.equal(ids.length, 49);
-for (const id of ids) await anon('select public.mc_inbox_delete($1, $2)', ['pw', id]);
-assert.equal(await one('select public.mc_inbox_status($1)', [phone.token]), 'mc-inbox-clear');
-console.log('PASS the inbox takes images from a shortcut pairing only, which reaches no category, and stops at 50');
 console.log('PASS ten wrong passwords in a row lock password calls for 15 minutes, counted despite the rollback');

@@ -14,7 +14,6 @@
 | [004_foodcollection.sql](migrations/004_foodcollection.sql) | 可以给 FoodCollection（Mac 上的「今天吃什么」）配对：只读写「餐厅」，吃过的店回报「已拥有」 |
 | [005_agent_delete.sql](migrations/005_agent_delete.sql) | 已配对的设备里可以删除已吊销的记录 |
 | [006_clipcollections.sql](migrations/006_clipcollections.sql) | 新增「新闻」分类，可以给拾闻（Mac 应用 ClipCollections）配对：只读写「新闻」，PDF 存好后回报「已保存」 |
-| [007_inbox.sql](migrations/007_inbox.sql) | iPhone 快捷指令的截图收件箱：快捷指令配对后只能往收件箱放图，碰不到任何分类 |
 
 想知道已经执行到哪一个，运行：
 
@@ -41,18 +40,15 @@ select setval('public.mc_check_locked', 1);
 
 | 函数 | 谁用 | 作用 |
 |---|---|---|
-| `mc_api_version()` | 各应用 | 接口版本（现在是 4），低于应用需要的版本时提示先执行新的迁移 |
+| `mc_api_version()` | 各应用 | 接口版本（现在是 3），低于应用需要的版本时提示先执行新的迁移 |
 | `mc_pull` / `mc_push` | 网页 | 拉取、推送全部收藏，`updatedAt` 较新者胜出 |
-| `mc_agent_create(p_pass, name, app)` | 网页 | 生成配对码（只显示这一次），`app` 是 `shuyu` / `plexus` / `steamless` / `foodcollection` / `clipcollections` / `shortcut` |
+| `mc_agent_create(p_pass, name, app)` | 网页 | 生成配对码（只显示这一次），`app` 是 `shuyu` / `plexus` / `steamless` / `foodcollection` / `clipcollections` |
 | `mc_agent_list` / `mc_agent_revoke` | 网页 | 查看、吊销已配对的设备 |
 | `mc_wishes(p_token, categories, since)` | 应用 | 增量拉取自己负责的分类（书屿：小说；Plexus：电影、电视剧；Steamless：游戏；FoodCollection：餐厅；拾闻：新闻），包含已删除的条目 |
 | `mc_wish_put(p_token, item)` | 应用 | 应用里「添加想看」直接写进中枢，只能写自己负责的分类 |
 | `mc_fulfill_put(p_token, rows)` | 应用 | 回报「已拥有」：匹配到的东西和跳转链接 |
 | `mc_agent_put_image(p_token, id, data)` | 应用 | 上传原截图（图片 data URL，最大 4 MB），心愿的 `shots` 里记它的 id |
 | `mc_agent_get_image(p_token, id)` | 应用 | 读取原截图，只给自己负责的分类里心愿用到的图 |
-| `mc_inbox_put(p_token, data)` | 快捷指令 | 往截图收件箱放一张图（图片 data URL，最大 4 MB，最多积压 50 张），成功返回 `mc-inbox-ok`；只接受 `shortcut` 配对 |
-| `mc_inbox_status(p_token)` | 快捷指令 | 收件箱清空时返回 `mc-inbox-clear`，这时才能删相册原图；否则返回 `mc-inbox-pending:张数` |
-| `mc_inbox_list` / `mc_inbox_get` / `mc_inbox_delete` | 网页 | 取出收件箱里的截图，保存或丢弃后删除 |
 | `mc_fulfill_pull(p_pass)` | 网页 | 读取所有「已拥有」记录 |
 | `mc_fulfill_reject(p_pass, item_id, app)` | 网页 | 「不是这个」：应用以后跳过这个匹配，换成别的匹配时会重新提示 |
 
