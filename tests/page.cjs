@@ -5,7 +5,7 @@ const assert = require('assert/strict');
 const root = require('path').join(__dirname, '..') + '/';
 const html = fs.readFileSync(root + 'index.html', 'utf8').replace(/<script type="module"[^>]*><\/script>/, '');
 let code = 'const Anthropic = window.Anthropic, createClient = (...a) => window.createClient(...a);\n' + fs.readFileSync(root + 'app.js', 'utf8').replace(/^import .*$/gm, '');
-code += '\nwindow.__shotDb = shotDb;'; // lets a test keep screenshots without IndexedDB
+code += '\nwindow.__shotDb = shotDb; window.__seed = (more, rows) => { items.push(...more.map(normalize)); fulfill = [...fulfill, ...rows]; render(); };'; // lets a test keep screenshots without IndexedDB
 const rpcs = [];
 const dom = new JSDOM(html, { url: 'http://127.0.0.1:8799/', runScripts: 'outside-only', pretendToBeVisual: true });
 const w = dom.window;
@@ -182,7 +182,7 @@ const tick = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   assert.ok($('[name="hide_novel"]').checked && !$('[name="hide_movie"]').checked);
   // A failed pairing says why beside the button, not only in a toast the dialog could cover.
   $('#pairApp').value = 'foodcollection'; $('#btnPair').click(); await tick();
-  assert.match($('#pairCode').textContent, /没能生成配对码：云端还没执行最新的迁移（004_foodcollection\.sql）/);
+  assert.match($('#pairCode').textContent, /没能生成配对码：云端还没执行最新的迁移（006_clipcollections\.sql）/);
   $('#pairApp').value = 'shuyu';
   // A revoked pairing can be deleted from the list; one in use only revoked.
   assert.match($('#agentList').textContent, /foodcollection · FoodCollection/);
@@ -239,5 +239,29 @@ const tick = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   assert.match(asked, /同时退出书屿和 Plexus 里的夸克网盘/);
   assert.ok(!calls.some(([u]) => u.endsWith('/api/netdisk/logout')), 'nothing signed out when cancelled');
   console.log('PASS netdisk accounts through 书屿: signs in to 书屿 once, QR, polling, confirm before signing out everywhere');
+
+  // 新闻：只有「待保存 / 已保存」
+  w.__seed(JSON.parse(JSON.stringify([
+    { id: 'w1', category: 'news', title: '已存好的新闻', link: 'https://a.com/x', extra: { source: '新华社', published: '2026-01-02', topic: '政策' }, createdAt: ts, updatedAt: ts, done: false },
+    { id: 'w2', category: 'news', title: '还没存的新闻', link: 'https://a.com/y', extra: {}, createdAt: ts, updatedAt: ts, done: false },
+  ])), [{ itemId: 'w1', app: 'clipcollections', ref: 'w1', url: '', title: '已存好的新闻', ownedAt: '2026-03-01T00:00:00Z', rejected: false }]);
+  w.document.querySelector('dialog[open] [data-close]')?.click();
+  $('#catTabs [data-cat="news"]').click(); await tick();
+  assert.equal($('#lbl-todo').textContent, '待保存');
+  assert.equal($('#lbl-owned').textContent, '已保存');
+  assert.ok($('button[data-status="done"]').hidden, 'no 已实现 tab for news');
+  assert.match($('#list').textContent, /还没存的新闻/);
+  assert.match($('#list .cv-stamp').textContent, /待保存/);
+  assert.equal($('#list .btn-done'), null, 'no 已实现 button on news');
+  $('button[data-status="owned"]').click(); await tick();
+  const savedCard = $('#list .card').textContent;
+  assert.match(savedCard, /已存好的新闻/);
+  assert.match(savedCard, /已保存 · 拾闻/);
+  assert.match(savedCard, /新华社 · 2026-01-02 · 政策/);
+  assert.doesNotMatch(savedCard, /不是这个|已拥有|已实现/);
+  $('#catTabs [data-cat="novel"]').click(); await tick();
+  assert.equal($('#lbl-todo').textContent, '想要', 'other categories keep their words');
+  assert.equal($('button[data-status="done"]').hidden, false);
+  console.log('PASS news: 待保存 / 已保存 only, no 已实现 or 不是这个, source and date on the cover');
   process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

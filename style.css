@@ -332,6 +332,14 @@ code { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: .9e
     linear-gradient(160deg, color-mix(in srgb, var(--c) 72%, #A6EBD8), var(--c));
 }
 
+/* 新闻：报纸的栏线 */
+.cv-news {
+  background:
+    repeating-linear-gradient(90deg, transparent 0 46px, rgba(255,255,255,.1) 46px 47px),
+    repeating-linear-gradient(0deg, transparent 0 13px, rgba(255,255,255,.05) 13px 14px),
+    linear-gradient(160deg, color-mix(in srgb, var(--c) 78%, #BFD8E2), var(--c));
+}
+
 /* 超市购物：收据纸，下沿是锯齿 */
 .cv-grocery {
   padding-bottom: 24px;

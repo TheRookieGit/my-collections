@@ -19,6 +19,8 @@ const CATS = {
   tool:       { name: "工具",     en: "Toolkit",    hue: "#3E5566", icon: '<path d="M14.5 6.5a4 4 0 0 1 5-5l-2.5 2.5.5 2.5 2.5.5 2.5-2.5a4 4 0 0 1-5 5L8 20a2.1 2.1 0 0 1-3-3z"/>', fields: [{ key: "platform", label: "平台" }] },
   place:      { name: "想去玩",   en: "Journeys",   hue: "#1F8A80", icon: '<path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/>', fields: [{ key: "location", label: "位置" }] },
   grocery:    { name: "超市购物", en: "Pantry",     hue: "#5E8A2E", icon: '<path d="M5 8h14l-1.2 11.1a2 2 0 0 1-2 1.9H8.2a2 2 0 0 1-2-1.9z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8"/>', fields: [{ key: "store", label: "超市" }, { key: "quantity", label: "数量" }] },
+  // archive：存档类。拾闻存好 PDF 就算完成，所以只有「待保存 / 已保存」，没有「已实现」「不是这个」和别名
+  news:       { name: "新闻",     en: "News",       hue: "#2F6073", icon: '<path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h10A1.5 1.5 0 0 1 17 5.5V19a2 2 0 0 0 2 2H6a2 2 0 0 1-2-2z"/><path d="M17 9h3v10a2 2 0 0 1-2 2"/><path d="M7.5 8h6M7.5 12h6M7.5 16h4"/>', fields: [{ key: "source", label: "来源" }, { key: "published", label: "发布日期", type: "date" }, { key: "topic", label: "主题" }], fulfiller: "clipcollections", archive: true },
 };
 const ALL_ICON = '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>';
 const svgIcon = (paths, cls = "") => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
@@ -33,6 +35,8 @@ const APPS = {
   steamless: { name: "Steamless", send: "http://localhost:5174/" },
   // Mac 上的 FoodCollection（今天吃什么）：想吃清单就是这里的「餐厅」，吃过了回报「已拥有」
   foodcollection: { name: "FoodCollection" },
+  // Mac 上的拾闻：这里的「新闻」由它存成桌面 PDF，存好后回报「已保存」。PDF 只在那台 Mac 上
+  clipcollections: { name: "拾闻" },
 };
 // 默认隐藏「已实现」按钮的分类：小说下载到书屿就算数了
 const HIDE_DONE = { novel: true };
@@ -75,7 +79,9 @@ let cfg = lsGet(LS_CFG, { apiKey: "", syncPass: "" });
 let fulfill = lsGet(LS_FULFILL, []);
 const ui = { cat: "all", status: "todo", q: "", sort: "created-desc" };
 
-const doneHidden = (cat) => !!(cfg.hideDone ?? HIDE_DONE)[cat];
+const isArchive = (cat) => !!CATS[cat]?.archive;
+const doneHidden = (cat) => isArchive(cat) || !!(cfg.hideDone ?? HIDE_DONE)[cat];
+const hasAliases = (cat) => !!CATS[cat]?.fulfiller && !isArchive(cat);
 const ownedRows = (i) => fulfill.filter((f) => f.itemId === i.id && f.ownedAt && !f.rejected);
 // 三档：想要 → 已拥有（应用自动回报）→ 已实现（手动点）
 const stateOf = (i) => (i.done ? "done" : ownedRows(i).length ? "owned" : "todo");
@@ -146,8 +152,9 @@ function renderTabs() {
   const wanted = live().filter((i) => stateOf(i) === "todo");
   for (const i of wanted) counts[i.category] = (counts[i.category] || 0) + 1;
   const total = wanted.length;
-  const owned = live().filter((i) => stateOf(i) === "owned").length;
-  $("#summary").textContent = `${total} 个心愿${owned ? ` · ${owned} 个已拥有` : ""}`;
+  const unsaved = counts.news || 0;
+  const ownedNotNews = live().filter((i) => stateOf(i) === "owned" && !isArchive(i.category)).length;
+  $("#summary").textContent = `${total - unsaved} 个心愿${ownedNotNews ? ` · ${ownedNotNews} 个已拥有` : ""}${unsaved ? ` · ${unsaved} 条新闻待保存` : ""}`;
   const tabs = [["all", "全部", "All", "", ALL_ICON, total], ...Object.entries(CATS).map(([k, c]) => [k, c.name, c.en, c.hue, c.icon, counts[k] || 0])];
   $("#catTabs").innerHTML = tabs
     .map(([k, n, en, hue, icon, c]) => `<button data-cat="${k}" class="tile ${ui.cat === k ? "active" : ""} ${c ? "" : "zero"}"${hue ? ` style="--c:${hue}"` : ""}>
@@ -157,7 +164,20 @@ function renderTabs() {
     .join("");
 }
 
+// 选中新闻时，状态按钮换成「待保存 / 已保存」，也没有「已实现」
+function renderStatusWords() {
+  const archive = isArchive(ui.cat);
+  if (archive && ui.status === "done") {
+    ui.status = "todo";
+    $$("button[data-status]").forEach((b) => b.classList.toggle("active", b.dataset.status === "todo"));
+  }
+  $("#lbl-todo").textContent = archive ? "待保存" : "想要";
+  $("#lbl-owned").textContent = archive ? "已保存" : "已拥有";
+  $('button[data-status="done"]').hidden = archive;
+}
+
 function renderList() {
+  renderStatusWords();
   const inCat = live().filter((i) => ui.cat === "all" || i.category === ui.cat);
   for (const s of ["todo", "owned", "done"]) $(`#cnt-${s}`).textContent = inCat.filter((i) => stateOf(i) === s).length;
   $("#cnt-all").textContent = inCat.length;
@@ -174,9 +194,10 @@ function renderList() {
   });
 
   if (!list.length) {
-    const [head, sub] = ui.status === "all" ? ["这里还空着", "点下面的「添加」，或者直接 Ctrl+V 粘贴一张截图"]
+    const [head, sub] = isArchive(ui.cat) ? (ui.status === "owned" ? ["还没有已保存的新闻", "拾闻配对后，存好 PDF 的新闻会出现在这里"] : ["这里还空着", "粘贴新闻截图，或者添加一条带链接的新闻"])
+      : ui.status === "all" ? ["这里还空着", "点下面的「添加」，或者直接 Ctrl+V 粘贴一张截图"]
       : ui.status === "done" ? ["还没有已实现的心愿", "实现了的心愿会收在这里"]
-      : ui.status === "owned" ? ["还没有已拥有的", "书屿、Plexus、Steamless 配对后，下载到的会自动出现在这里"]
+      : ui.status === "owned" ? ["还没有已拥有的", "书屿、Plexus、Steamless、拾闻配对后，有了的会自动出现在这里"]
       : ["这里还空着", "点下面的「添加」，或者直接 Ctrl+V 粘贴一张截图"];
     $("#list").innerHTML = `<div class="empty"><p class="empty-head">${head}</p><p>${sub}</p></div>`;
     return;
@@ -196,6 +217,7 @@ function coverSub(i) {
     case "tool": return x.platform || "";
     case "place": return x.location || "";
     case "grocery": return [x.store, x.quantity].filter(Boolean).join(" · ");
+    case "news": return [x.source, x.published, x.topic].filter(Boolean).join(" · ");
     default: return "";
   }
 }
@@ -203,7 +225,7 @@ function coverSub(i) {
 // 封面图：Steam 游戏用商店横幅，其余用分类自己的纹样。截图不当封面：截下来的多半是整屏，不是海报
 const steamHeader = (i) => i.externalIds?.steamAppId ? `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${Number(i.externalIds.steamAppId)}/header.jpg` : "";
 
-const SOURCES = { screenshot: "截图识别", xhs: "小红书", manual: "手动添加", steamless: "Steamless" };
+const SOURCES = { screenshot: "截图识别", xhs: "小红书", manual: "手动添加", steamless: "Steamless", clipcollections: "拾闻" };
 
 // 卡片和详情共用的几块：封面、字段、已拥有、送去下载
 function parts(i) {
@@ -218,10 +240,11 @@ function parts(i) {
   const aliases = i.aliases.length ? row("别名", i.aliases.map(esc).join("、")) : "";
   const downloads = i.links.length ? row("下载", i.links.map((l, n) => (isUrl(l) ? ext(l, `${esc(hostOf(l))}${i.links.length > 1 ? ` ${n + 1}` : ""}`) : esc(l))).join("　")) : "";
   const link = i.link ? row("链接", ext(i.link, esc(hostOf(i.link)))) : "";
+  const archive = isArchive(i.category);
   const owned = ownedRows(i).map((f) => `
-    <div class="owned"><span class="owned-text">已拥有 · ${esc(APPS[f.app]?.name || f.app)}${f.title ? `：${esc(f.title)}` : ""} · ${fmtTime(f.ownedAt).slice(0, 10)}</span>
+    <div class="owned"><span class="owned-text">${archive ? "已保存" : "已拥有"} · ${esc(APPS[f.app]?.name || f.app)}${f.title ? `：${esc(f.title)}` : ""} · ${fmtTime(f.ownedAt).slice(0, 10)}</span>
       ${isUrl(f.url) ? `<a href="${esc(f.url)}" target="_blank" rel="noopener">查看</a>` : ""}
-      ${fromSteamless(i) ? "" : `<button data-act="reject" data-app="${esc(f.app)}" class="link-btn" title="匹配错了：${esc(APPS[f.app]?.name || f.app)}以后不再把它算作这条心愿">不是这个</button>`}</div>`).join("");
+      ${fromSteamless(i) || archive ? "" : `<button data-act="reject" data-app="${esc(f.app)}" class="link-btn" title="匹配错了：${esc(APPS[f.app]?.name || f.app)}以后不再把它算作这条心愿">不是这个</button>`}</div>`).join("");
   const app = APPS[c.fulfiller];
   const send = app?.send && i.links.length && !i.done && !owned
     ? `<a class="send" href="${app.send}#links=${encodeURIComponent(i.links.join("\n"))}" target="_blank" rel="noopener">送到${app.name}下载 →</a>` : "";
@@ -232,7 +255,8 @@ function parts(i) {
   // 已拥有、已实现的在封面上盖个章，一眼看得出是哪一类。章放在封面外面，已实现的封面褪色时章不跟着褪
   const state = stateOf(i);
   const by = state === "owned" ? ownedRows(i).map((f) => APPS[f.app]?.name || f.app)[0] : "";
-  const stamp = state === "owned" ? `<span class="cv-stamp"><b>已拥有</b>${by ? `<small>${esc(by)}</small>` : ""}</span>`
+  const stamp = state === "owned" ? `<span class="cv-stamp"><b>${archive ? "已保存" : "已拥有"}</b>${by ? `<small>${esc(by)}</small>` : ""}</span>`
+    : archive ? `<span class="cv-stamp"><b>待保存</b></span>`
     : state === "done" ? `<span class="cv-stamp"><b>已实现</b><small>${fmtTime(i.doneAt).slice(5, 10)}</small></span>` : "";
   const cover = `
     <div class="cover cv-${esc(i.category)}${steam ? " has-img" : ""}">
@@ -247,7 +271,7 @@ function parts(i) {
         ${sub ? `<p class="cv-sub">${esc(sub)}</p>` : ""}
       </div>
     </div>`;
-  const doneBtn = doneHidden(i.category) && !i.done ? "" : `<button data-act="done" class="btn-done ${i.done ? "is-done" : ""}">${i.done ? "撤回" : "已实现"}</button>`;
+  const doneBtn = archive || (doneHidden(i.category) && !i.done) ? "" : `<button data-act="done" class="btn-done ${i.done ? "is-done" : ""}">${i.done ? "撤回" : "已实现"}</button>`;
   return { c, cover: cover + stamp, metas: extras + kind + aliases + downloads + link, owned, send, doneBtn };
 }
 
@@ -389,7 +413,7 @@ function renderExtraFields(cat, extra = {}) {
   // 类型只有小说有；下载链接和别名给会自动匹配的分类，别名能帮应用认出译名、原名
   $("#fKindRow").hidden = cat !== "novel";
   $("#fLinksRow").hidden = !CATS[cat]?.links;
-  $("#fAliasesRow").hidden = !CATS[cat]?.fulfiller;
+  $("#fAliasesRow").hidden = !hasAliases(cat);
 }
 const splitList = (s, sep) => [...new Set(s.split(sep).map((x) => x.trim()).filter(Boolean))];
 function renderStarInput() {
@@ -448,7 +472,7 @@ form.addEventListener("submit", (e) => {
     extra: collectExtra(),
     ...(cat === "novel" ? { kind: form.kind.value } : {}),
     links: CATS[cat]?.links ? splitList(form.links.value, /\n/) : [],
-    aliases: CATS[cat]?.fulfiller ? splitList(form.aliases.value, /[,，、\n]/) : [],
+    aliases: hasAliases(cat) ? splitList(form.aliases.value, /[,，、\n]/) : [],
   });
   toast(editing ? "已保存" : "已收藏 ⭐");
 });
@@ -494,6 +518,7 @@ ${Object.entries(CATS).map(([k, c]) => `- ${k}: ${c.name}${c.fields.length || c.
 - title 用条目本身的名字（书名、片名、店名、商品名、游戏名、地名、工具名等），保持原语言。
 - aliases 填图里出现的这个条目的其他名字（中文译名、原名、英文名、简称），用 / 分隔，不要重复 title；没有就填 ""。
 - 电子游戏（Steam、主机、手游）归入 game。
+- 新闻报道、政策、投资资讯等想存档的文章归入 news：title 用文章标题，published 用 YYYY-MM-DD 格式，topic 填 2 到 6 个字的主题（如 投资、政策）。
 - 只填能看到或能明确推断的信息，其它字段填空字符串 ""。
 - coupon 的 expiry 用 YYYY-MM-DD 格式；download 填下载/网盘/磁力链接，提取码写在链接后面。
 - note 用一两句中文简述关键信息（如优惠内容、推荐理由、地址、营业时间、提取码），配图里的文字也要看。
@@ -502,6 +527,7 @@ ${Object.entries(CATS).map(([k, c]) => `- ${k}: ${c.name}${c.fields.length || c.
 
 let shotResults = [];
 let pendingShots = []; // 本次识别的原截图，点「保存选中」后才落盘
+let pendingFiles = []; // 这些截图的原文件：识别前还不知道是不是新闻，保存时再按新闻的清晰度重压
 
 async function imageToBase64(file, maxSide = 1568, quality = 0.88) {
   const bmp = await createImageBitmap(file);
@@ -547,6 +573,22 @@ const shotDb = (() => {
 
 // 存档用的原图：比识别用的再压一点，一张手机截图大约 100–200KB
 const ARCHIVE_SIDE = 1600, ARCHIVE_QUALITY = 0.72;
+// 新闻截图要看清字：只按宽度压缩，长截图不会被压扁。一张放不下就逐档降低，云端上限是 4 MB
+const NEWS_SHOT_STEPS = [[1800, 0.86], [1500, 0.8], [1200, 0.72], [1000, 0.62], [800, 0.55]];
+const NEWS_SHOT_LIMIT = 3_900_000;
+async function newsShotData(file) {
+  const bmp = await createImageBitmap(file);
+  const canvas = document.createElement("canvas");
+  for (const [width, quality] of NEWS_SHOT_STEPS) {
+    const scale = Math.min(1, width / bmp.width, 12000 / bmp.height);
+    canvas.width = Math.round(bmp.width * scale);
+    canvas.height = Math.round(bmp.height * scale);
+    canvas.getContext("2d").drawImage(bmp, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL("image/jpeg", quality);
+    if (dataUrl.length <= NEWS_SHOT_LIMIT) return dataUrl;
+  }
+  throw new Error("这张截图太大了");
+}
 
 async function storeShots(shots) {
   for (const s of shots) {
@@ -561,7 +603,7 @@ async function addShots(itemId, files) {
   const item = items.find((i) => i.id === itemId);
   if (!item || !files.length) return;
   try {
-    const shots = await Promise.all(files.map(async (f) => ({ id: uid(), data: (await imageToBase64(f, ARCHIVE_SIDE, ARCHIVE_QUALITY)).dataUrl })));
+    const shots = await Promise.all(files.map(async (f) => ({ id: uid(), data: isArchive(item.category) ? await newsShotData(f) : (await imageToBase64(f, ARCHIVE_SIDE, ARCHIVE_QUALITY)).dataUrl })));
     await storeShots(shots);
     upsert({ ...item, shots: [...(item.shots || []), ...shots.map((s) => s.id)] });
     toast(`已添加 ${shots.length} 张截图`);
@@ -679,13 +721,14 @@ async function recognize({ files = [], imageUrls = [], text = "", link = "" }) {
       source: files.length ? "screenshot" : "xhs",
       extra: Object.fromEntries(EXTRA_KEYS.filter((k) => r[k]).map((k) => [k, r[k]])),
       links: r.download?.trim() ? [r.download.trim()] : [],
-      aliases: CATS[r.category]?.fulfiller ? splitList(r.aliases || "", /\s*\/\s*/).filter((a) => a !== r.title.trim()) : [],
+      aliases: hasAliases(r.category) ? splitList(r.aliases || "", /\s*\/\s*/).filter((a) => a !== r.title.trim()) : [],
       externalIds: {},
       ...(shots.length ? { shots: shots.map((s) => s.id) } : {}),
       _checked: true,
     }));
     markSeen(shotResults);
     pendingShots = shots;
+    pendingFiles = files;
     $("#shotState").textContent = shotResults.length ? `识别到 ${shotResults.length} 条，确认/修改后保存：` : "没有识别到可收藏的条目，可以手动添加。";
     renderShotResults();
   } catch (err) {
@@ -823,7 +866,7 @@ function renderShotResults() {
       </div>
       ${r._seen ? `<div class="seen">${esc(r._seen)}，默认不保存</div>` : ""}
       <input data-k="title" value="${esc(r.title)}" placeholder="标题">
-      ${CATS[r.category]?.fulfiller ? `<input data-k="aliases" value="${esc(r.aliases.join(" / "))}" placeholder="别名（译名、原名），用 / 分隔">` : ""}
+      ${hasAliases(r.category) ? `<input data-k="aliases" value="${esc(r.aliases.join(" / "))}" placeholder="别名（译名、原名），用 / 分隔">` : ""}
       <div class="grid2">
         ${(CATS[r.category]?.fields || []).map((f) => `<input data-x="${f.key}" value="${esc(r.extra[f.key] || "")}" placeholder="${f.label}">`).join("")}
       </div>
@@ -858,13 +901,19 @@ $("#btnShotSave").addEventListener("click", async () => {
   const picked = shotResults.filter((r) => r._checked && r.title.trim());
   const ts = now();
   if (picked.some((r) => r.shots) && pendingShots.length) {
-    try { await storeShots(pendingShots); } catch (err) { toast("原截图保存失败：" + err.message); }
+    try {
+      if (picked.some((r) => r.shots && isArchive(r.category))) {
+        pendingShots = await Promise.all(pendingShots.map(async (s, n) => ({ ...s, data: await newsShotData(pendingFiles[n]) })));
+      }
+      await storeShots(pendingShots);
+    } catch (err) { toast("原截图保存失败：" + err.message); }
   }
   pendingShots = [];
+  pendingFiles = [];
   for (const { _checked, _seen, ...r } of picked) {
     r.extra = Object.fromEntries(Object.entries(r.extra).filter(([, v]) => v && v.trim()));
     if (!CATS[r.category]?.links) r.links = [];
-    if (!CATS[r.category]?.fulfiller) r.aliases = [];
+    if (!hasAliases(r.category)) r.aliases = [];
     items.push({ ...r, updatedAt: ts });
   }
   save();
@@ -897,7 +946,7 @@ const sform = $("#settingsForm");
 function openSettings() {
   sform.apiKey.value = cfg.apiKey || "";
   sform.syncPass.value = cfg.syncPass || "";
-  $("#hideDone").innerHTML = Object.entries(CATS).map(([k, c]) =>
+  $("#hideDone").innerHTML = Object.entries(CATS).filter(([k]) => !isArchive(k)).map(([k, c]) =>
     `<label class="check"><input type="checkbox" name="hide_${k}" ${doneHidden(k) ? "checked" : ""}>${c.name}</label>`).join("");
   $("#shuyuServer").value = shuyuServer();
   $("#pairCode").hidden = true;
@@ -907,9 +956,10 @@ function openSettings() {
 }
 function readSettingsForm() {
   const apiKey = sform.apiKey.value.trim();
-  const hideDone = Object.fromEntries(Object.keys(CATS).map((k) => [k, !!sform[`hide_${k}`]?.checked]));
+  const hideCats = Object.keys(CATS).filter((k) => !isArchive(k));
+  const hideDone = Object.fromEntries(hideCats.map((k) => [k, !!sform[`hide_${k}`]?.checked]));
   // 改动后标记待上传，下次同步时推到云端，其它设备会自动拿到
-  const hideChanged = Object.keys(CATS).some((k) => hideDone[k] !== doneHidden(k));
+  const hideChanged = hideCats.some((k) => hideDone[k] !== doneHidden(k));
   cfg = { ...cfg, apiKey, syncPass: sform.syncPass.value, hideDone, apiKeyDirty: cfg.apiKeyDirty || apiKey !== cfg.apiKey,
     ...(hideChanged ? { hideDoneAt: now(), hideDoneDirty: true } : {}) };
   lsSet(LS_CFG, cfg);
@@ -1120,7 +1170,7 @@ function syncError(err) {
   if (err?.code === "28P01") return "同步密码错误";
   if (err?.code === "MC429") return `同步密码错误次数太多，请 ${Math.ceil((+err.hint || 900) / 60)} 分钟后再试`;
   if (err?.code === "PGRST202") return "云端还没执行最新的迁移，见 supabase/README.md";
-  if (err?.code === "22023") return "云端还没执行最新的迁移（004_foodcollection.sql），见 supabase/README.md";
+  if (err?.code === "22023") return "云端还没执行最新的迁移（006_clipcollections.sql），见 supabase/README.md";
   return "同步失败：" + (err?.message || err);
 }
 
@@ -1165,7 +1215,7 @@ async function syncConfig() {
   const remoteHide = remote.hideDone && typeof remote.hideDone === "object" ? remote.hideDone : null;
   const localAt = cfg.hideDoneAt || "", remoteAt = remote.hideDoneAt || "";
   if (!remoteHide || (cfg.hideDoneDirty && localAt >= remoteAt)) {
-    push.hideDone = Object.fromEntries(Object.keys(CATS).map((k) => [k, doneHidden(k)]));
+    push.hideDone = Object.fromEntries(Object.keys(CATS).filter((k) => !isArchive(k)).map((k) => [k, doneHidden(k)]));
     push.hideDoneAt = localAt || now();
     if (!cfg.hideDoneAt) { cfg.hideDoneAt = push.hideDoneAt; changed = true; }
   } else if (remoteAt > localAt || JSON.stringify(remoteHide) !== JSON.stringify(cfg.hideDone)) {

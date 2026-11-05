@@ -12,17 +12,17 @@ await db.exec(`create schema extensions; create role anon; create role authentic
   -- Supabase grants new tables and sequences to anon by default; the migrations must take that back.
   alter default privileges in schema public grant all on tables to anon, authenticated;
   alter default privileges in schema public grant all on sequences to anon, authenticated;`);
-const files = ['001_base.sql', '002_wish_hub.sql', '003_shots.sql', '004_foodcollection.sql', '005_agent_delete.sql'];
+const files = ['001_base.sql', '002_wish_hub.sql', '003_shots.sql', '004_foodcollection.sql', '005_agent_delete.sql', '006_clipcollections.sql'];
 for (let round = 0; round < 2; round++) for (const f of files) await db.exec(readFileSync(new URL(f, dir), 'utf8'));
 console.log('PASS migrations run twice');
-assert.deepEqual((await db.query('select name from public.mc_migrations order by name')).rows.map((r) => r.name), ['001_base', '002_wish_hub', '003_shots', '004_foodcollection', '005_agent_delete']);
+assert.deepEqual((await db.query('select name from public.mc_migrations order by name')).rows.map((r) => r.name), ['001_base', '002_wish_hub', '003_shots', '004_foodcollection', '005_agent_delete', '006_clipcollections']);
 await db.exec(`insert into public.mc_secret (id, hash) values (1, extensions.crypt('pw', extensions.gen_salt('bf', 4)))`);
 
 const anon = async (sql, params) => { await db.exec('set role anon'); try { return (await db.query(sql, params)).rows; } finally { await db.exec('reset role'); } };
 const one = async (sql, params) => Object.values((await anon(sql, params))[0])[0];
 const fails = async (sql, params, code) => { await assert.rejects(anon(sql, params), (e) => { assert.equal(e.code, code, e.message); return true; }); };
 
-assert.equal(await one('select public.mc_api_version()'), 2);
+assert.equal(await one('select public.mc_api_version()'), 3);
 await fails('select * from public.items', [], '42501');
 await fails('select * from public.mc_agents', [], '42501');
 await fails("select public.mc_check('pw')", [], '42501');
@@ -116,4 +116,28 @@ await assert.rejects(anon("select public.mc_pull('pw')"), (e) => { assert.equal(
 assert.ok((await one('select public.mc_wishes($1, $2, $3)', [plexus.token, null, null])).items, 'paired devices keep working while locked');
 await db.exec("select setval('public.mc_check_locked', 1)");
 assert.ok(Array.isArray(await one("select public.mc_pull('pw')")));
+
+const clip = await one("select public.mc_agent_create('pw', 'Mac', 'clipcollections')");
+assert.equal(clip.app, 'clipcollections');
+await anon('select public.mc_push($1, $2)', ['pw', JSON.stringify([item('w1', 'news', '中枢里加的新闻', '2026-02-01T00:00:00Z', { link: 'https://a.com/x' })])]);
+let got = await one('select public.mc_wishes($1, $2, $3)', [clip.token, null, null]);
+assert.deepEqual(got.items.map((i) => i.id), ['w1'], 'clipcollections reads news and nothing else');
+got = await one('select public.mc_wishes($1, $2, $3)', [clip.token, ['novel'], null]);
+assert.deepEqual(got.items, [], 'asking for another category gets nothing');
+await one('select public.mc_wish_put($1, $2)', [clip.token, JSON.stringify(item('w2', 'news', '拾闻里加的新闻', '2026-02-02T00:00:00Z'))]);
+await fails('select public.mc_wish_put($1, $2)', [clip.token, JSON.stringify(item('w3', 'novel', 'x', '2026-02-02T00:00:00Z'))], '42501');
+await one('select public.mc_wish_put($1, $2)', [clip.token, JSON.stringify(item('n1', 'news', '借 id 改小说', '2027-01-01T00:00:00Z'))]);
+assert.equal((await one("select public.mc_pull('pw')")).find((i) => i.id === 'n1').category, 'novel', 'an id of another category cannot be taken over');
+await anon('select public.mc_fulfill_put($1, $2)', [clip.token, JSON.stringify([{ itemId: 'w1', ref: 'w1', title: '中枢里加的新闻', ownedAt: '2026-02-03T00:00:00Z' }])]);
+assert.ok((await one("select public.mc_fulfill_pull('pw')")).some((f) => f.itemId === 'w1' && f.app === 'clipcollections' && f.ownedAt), 'saved is reported through mc_fulfill');
+const pulled = await one("select public.mc_pull('pw')");
+assert.equal(pulled.find((i) => i.id === 'w1').ownedAt, undefined, 'the state stays out of the item JSON, so mc_push cannot overwrite it');
+const shot = 'data:image/jpeg;base64,AAAA';
+await anon('select public.mc_agent_put_image($1, $2, $3)', [clip.token, 'w2-000', shot]);
+await one('select public.mc_wish_put($1, $2)', [clip.token, JSON.stringify(item('w2', 'news', '拾闻里加的新闻', '2026-02-05T00:00:00Z', { shots: ['w2-000'] }))]);
+assert.equal(await one('select public.mc_agent_get_image($1, $2)', [clip.token, 'w2-000']), shot);
+const hub = await one("select public.mc_agent_create('pw', '', 'hub')");
+assert.ok((await one('select public.mc_wishes($1, $2, $3)', [hub.token, null, null])).items.some((i) => i.category === 'news'), 'a hub pairing covers news too');
+assert.equal((await one('select public.mc_wishes($1, $2, $3)', [plexus.token, null, null])).items.some((i) => i.category === 'news'), false, 'other apps do not see news');
+console.log('PASS clipcollections reads and writes news only, reports saved through mc_fulfill, and news stays out of other apps');
 console.log('PASS ten wrong passwords in a row lock password calls for 15 minutes, counted despite the rollback');
