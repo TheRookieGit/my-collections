@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Serif+SC:wght@500;600;700&display=swap">
-  <link rel="stylesheet" href="style.css?v=25">
+  <link rel="stylesheet" href="style.css?v=26">
 </head>
 <body>
   <header class="topbar">
@@ -177,6 +177,12 @@
         </label>
       </fieldset>
       <fieldset>
+        <legend>截图导入记录</legend>
+        <p class="muted small">按图片算。已保存：这张图里至少有一条存进了收藏或送到了 AutoReceipt。未保存：没勾选、没识别出来，或者关掉了窗口。</p>
+        <p id="importSummary" class="small"></p>
+        <ul id="importList" class="agent-list import-list"></ul>
+      </fieldset>
+      <fieldset>
         <legend>「已实现」按钮</legend>
         <p class="muted small">勾选的分类不显示「✓ 已实现」，下载到书屿、Plexus 就算数。开启云同步后所有设备一起变。</p>
         <div id="hideDone" class="checks"></div>
@@ -218,6 +224,6 @@
 
   <div id="toast" class="toast" popover="manual"></div>
 
-  <script type="module" src="app.js?v=31"></script>
+  <script type="module" src="app.js?v=32"></script>
 </body>
 </html>

@@ -29,6 +29,7 @@ const fulfillRows = [{ itemId: 'n2', app: 'shuyu', ref: 'a.txt', url: 'https://t
 // Screenshot recognition answers whatever the test sets in `reply`; the images never reach a canvas.
 let reply = [];
 let receiptImages = [];
+const importRows = [{ id: 'old', at: '2026-01-01T10:00:00.000Z', uploaded: 2, accepted: 1 }]; // from another device
 const config = {};
 const agents = [{ id: 'a1', name: '书屿 Windows', app: 'shuyu', createdAt: ts, lastSeen: null, revoked: false },
   { id: 'a0', name: 'foodcollection', app: 'foodcollection', createdAt: ts, lastSeen: null, revoked: true }];
@@ -45,6 +46,8 @@ w.createClient = () => ({
     if (name === 'mc_agent_delete') { agents.find((a) => a.id === args.p_id).deleted = true; return { data: null, error: null }; }
     if (name === 'mc_agent_create' && args.p_app === 'foodcollection') return { data: null, error: { code: '22023', message: 'unknown app' } };
     if (name === 'mc_agent_create') return { data: { id: 'a2', token: 'mch_' + '0'.repeat(48), app: args.p_app, name: 'x' }, error: null };
+    if (name === 'mc_import_put') { for (const r of args.p_rows) { const i = importRows.findIndex((x) => x.id === r.id); if (i < 0) importRows.push({ ...r }); else importRows[i] = { ...r }; } return { data: null, error: null }; }
+    if (name === 'mc_import_list') return { data: importRows.map((r) => ({ ...r })), error: null };
     if (name === 'mc_get_config') return { data: structuredClone(config), error: null };
     if (name === 'mc_set_config') { Object.assign(config, args.p_data); return { data: null, error: null }; }
     return { data: null, error: null };
@@ -329,6 +332,25 @@ const tick = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   const shotted = kept2.find((i) => i.title === '小票旁边的工具二');
   assert.equal(shotted.shots.length, 1, 'the receipt screenshot is not attached to the item');
   receiptImages = [];
+  w.__shotDb.pending = async () => []; // no IndexedDB here, and a sync stops at the screenshot upload without it
+  const runs = () => [...importRows].sort((a, b) => new Date(b.at) - new Date(a.at));
+  await w.eval('sync()'); await tick(100);
+  assert.deepEqual([runs()[0].uploaded, runs()[0].accepted], [2, 2], 'the last import: the item and the receipt were both kept');
+  assert.deepEqual([runs()[1].uploaded, runs()[1].accepted], [2, 0], 'the one without a passcode was closed unsaved');
+  assert.ok(runs().at(-1).id === 'old', 'rows from other devices stay');
+  reply = [{ ...shot('tool', '第一张的工具'), image: 1 }, { ...shot('tool', '也是第一张'), image: 1 }];
+  pick(['a.png', 'b.png', 'c.png']); await tick(100);
+  assert.equal(runs().length, importRows.length);
+  $('#btnShotSave').click(); await tick(100);
+  await w.eval('sync()'); await tick(100);
+  assert.deepEqual([runs()[0].uploaded, runs()[0].accepted], [3, 1], 'counted per image, not per item');
+  $('#btnSettings').click(); await tick(100);
+  const lines = $$('#importList li').map((li) => li.textContent.replace(/\s+/g, ' ').trim());
+  assert.match(lines[0], /^\d{4}-\d{2}-\d{2} \d{2}:\d{2} 上传 3 张 · 已保存 1 张 · 未保存 2 张$/);
+  assert.match(lines.at(-1), /^2026-01-01 .* 上传 2 张 · 已保存 1 张 · 未保存 1 张$/);
+  const total = importRows.reduce((n, r) => n + r.uploaded, 0), savedTotal = importRows.reduce((n, r) => n + r.accepted, 0);
+  assert.equal($('#importSummary').textContent, `累计上传 ${total} 张：已保存 ${savedTotal} 张，未保存 ${total - savedTotal} 张`);
+  console.log('PASS the import log: time and counts per image, kept when the window is closed, shared with other devices');
   console.log('PASS receipts: grouped by date, date and merchant corrected before upload, kept out of the collection, retried on failure');
   process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

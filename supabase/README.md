@@ -14,6 +14,7 @@
 | [004_foodcollection.sql](migrations/004_foodcollection.sql) | 可以给 FoodCollection（Mac 上的「今天吃什么」）配对：只读写「餐厅」，吃过的店回报「已拥有」 |
 | [005_agent_delete.sql](migrations/005_agent_delete.sql) | 已配对的设备里可以删除已吊销的记录 |
 | [006_clipcollections.sql](migrations/006_clipcollections.sql) | 新增「新闻」分类，可以给拾闻（Mac 应用 ClipCollections）配对：只读写「新闻」，PDF 存好后回报「已保存」 |
+| [007_import_log.sql](migrations/007_import_log.sql) | 截图导入记录：每次导入的时间、上传张数、已保存张数 |
 
 想知道已经执行到哪一个，运行：
 
@@ -49,6 +50,7 @@ select setval('public.mc_check_locked', 1);
 | `mc_fulfill_put(p_token, rows)` | 应用 | 回报「已拥有」：匹配到的东西和跳转链接 |
 | `mc_agent_put_image(p_token, id, data)` | 应用 | 上传原截图（图片 data URL，最大 4 MB），心愿的 `shots` 里记它的 id |
 | `mc_agent_get_image(p_token, id)` | 应用 | 读取原截图，只给自己负责的分类里心愿用到的图 |
+| `mc_import_put(p_pass, rows)` / `mc_import_list(p_pass)` | 网页 | 写入、读取截图导入记录 |
 | `mc_fulfill_pull(p_pass)` | 网页 | 读取所有「已拥有」记录 |
 | `mc_fulfill_reject(p_pass, item_id, app)` | 网页 | 「不是这个」：应用以后跳过这个匹配，换成别的匹配时会重新提示 |
 

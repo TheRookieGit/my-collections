@@ -12,10 +12,10 @@ await db.exec(`create schema extensions; create role anon; create role authentic
   -- Supabase grants new tables and sequences to anon by default; the migrations must take that back.
   alter default privileges in schema public grant all on tables to anon, authenticated;
   alter default privileges in schema public grant all on sequences to anon, authenticated;`);
-const files = ['001_base.sql', '002_wish_hub.sql', '003_shots.sql', '004_foodcollection.sql', '005_agent_delete.sql', '006_clipcollections.sql'];
+const files = ['001_base.sql', '002_wish_hub.sql', '003_shots.sql', '004_foodcollection.sql', '005_agent_delete.sql', '006_clipcollections.sql', '007_import_log.sql'];
 for (let round = 0; round < 2; round++) for (const f of files) await db.exec(readFileSync(new URL(f, dir), 'utf8'));
 console.log('PASS migrations run twice');
-assert.deepEqual((await db.query('select name from public.mc_migrations order by name')).rows.map((r) => r.name), ['001_base', '002_wish_hub', '003_shots', '004_foodcollection', '005_agent_delete', '006_clipcollections']);
+assert.deepEqual((await db.query('select name from public.mc_migrations order by name')).rows.map((r) => r.name), ['001_base', '002_wish_hub', '003_shots', '004_foodcollection', '005_agent_delete', '006_clipcollections', '007_import_log']);
 await db.exec(`insert into public.mc_secret (id, hash) values (1, extensions.crypt('pw', extensions.gen_salt('bf', 4)))`);
 
 const anon = async (sql, params) => { await db.exec('set role anon'); try { return (await db.query(sql, params)).rows; } finally { await db.exec('reset role'); } };
@@ -25,6 +25,7 @@ const fails = async (sql, params, code) => { await assert.rejects(anon(sql, para
 assert.equal(await one('select public.mc_api_version()'), 3);
 await fails('select * from public.items', [], '42501');
 await fails('select * from public.mc_agents', [], '42501');
+await fails('select * from public.mc_imports', [], '42501');
 await fails("select public.mc_check('pw')", [], '42501');
 await fails("select public.mc_agent_check('x')", [], '42501');
 await fails("select nextval('public.mc_check_failures')", [], '42501');
@@ -140,4 +141,14 @@ const hub = await one("select public.mc_agent_create('pw', '', 'hub')");
 assert.ok((await one('select public.mc_wishes($1, $2, $3)', [hub.token, null, null])).items.some((i) => i.category === 'news'), 'a hub pairing covers news too');
 assert.equal((await one('select public.mc_wishes($1, $2, $3)', [plexus.token, null, null])).items.some((i) => i.category === 'news'), false, 'other apps do not see news');
 console.log('PASS clipcollections reads and writes news only, reports saved through mc_fulfill, and news stays out of other apps');
+const log = (id, at, uploaded, accepted) => JSON.stringify([{ id, at, uploaded, accepted }]);
+await fails('select public.mc_import_put($1, $2)', ['wrong', log('i1', '2026-03-01T10:00:00Z', 3, 0)], '28P01');
+await anon('select public.mc_import_put($1, $2)', ['pw', log('i1', '2026-03-01T10:00:00Z', 3, 0)]);
+await anon('select public.mc_import_put($1, $2)', ['pw', log('i2', '2026-03-02T10:00:00Z', 1, 0)]);
+await anon('select public.mc_import_put($1, $2)', ['pw', log('i1', '2026-03-01T10:00:00Z', 3, 2)]);
+await anon('select public.mc_import_put($1, $2)', ['pw', log('i1', '2026-03-01T10:00:00Z', 3, 1)]);
+await fails('select public.mc_import_put($1, $2)', ['pw', log('i3', '2026-03-03T10:00:00Z', 1, 2)], '23514');
+await fails("select public.mc_import_list('wrong')", [], '28P01');
+assert.deepEqual((await one("select public.mc_import_list('pw')")).map((r) => [r.id, r.uploaded, r.accepted]), [['i2', 1, 0], ['i1', 3, 2]], 'newest first, and a stale device cannot lower the count');
+console.log('PASS the import log updates by id and is closed without the password');
 console.log('PASS ten wrong passwords in a row lock password calls for 15 minutes, counted despite the rollback');

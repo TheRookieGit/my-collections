@@ -67,6 +67,7 @@ const fromSteamless = (i) => i.source === "steamless";
 const LS_DATA = "mc.items.v1";
 const LS_CFG = "mc.config.v1";
 const LS_FULFILL = "mc.fulfill.v1";
+const LS_IMPORTS = "mc.imports.v1";
 
 function lsGet(key, fallback) {
   try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; }
@@ -79,6 +80,7 @@ let items = lsGet(LS_DATA, []).map(normalize);
 let cfg = lsGet(LS_CFG, { apiKey: "", syncPass: "" });
 // 各应用回报的「已拥有」（mc_fulfill），和收藏分开存：收藏按 updatedAt 整条覆盖，写在一起会互相冲掉
 let fulfill = lsGet(LS_FULFILL, []);
+let imports = lsGet(LS_IMPORTS, []); // 截图导入记录：{ id, at, uploaded, accepted, dirty }，dirty 是还没传到云端的
 const ui = { cat: "all", status: "todo", q: "", sort: "created-desc" };
 
 const isArchive = (cat) => !!CATS[cat]?.archive;
@@ -498,13 +500,14 @@ const EXTRACT_SCHEMA = {
         properties: {
           category: { type: "string", enum: Object.keys(CATS) },
           title: { type: "string" },
+          image: { type: "integer" },
           note: { type: "string" },
           link: { type: "string" },
           download: { type: "string" },
           aliases: { type: "string" },
           ...Object.fromEntries(EXTRA_KEYS.map((k) => [k, { type: "string" }])),
         },
-        required: ["category", "title", "note", "link", "download", "aliases", ...EXTRA_KEYS],
+        required: ["category", "title", "image", "note", "link", "download", "aliases", ...EXTRA_KEYS],
         additionalProperties: false,
       },
     },
@@ -526,12 +529,14 @@ ${Object.entries(CATS).map(([k, c]) => `- ${k}: ${c.name}${c.fields.length || c.
 - coupon 的 expiry 用 YYYY-MM-DD 格式；download 填下载/网盘/磁力链接，提取码写在链接后面。
 - note 用一两句中文简述关键信息（如优惠内容、推荐理由、地址、营业时间、提取码），配图里的文字也要看。
 - 笔记标题往往只是噱头（如"这片太绝了"），title 要用正文/配图里真正的名字。
+- image 填这个条目来自哪张图的编号（「图 N」里的 N），来自文字就填 0。
 - 小票、发票、外卖或网购的订单截图、付款记录不是收藏：不要放进 items，把这张图的编号（「图 N」里的 N）写进 receiptImages。没有这类图片时 receiptImages 返回空数组。
 - 识别不出任何条目时返回空数组。`;
 
 let shotResults = [];
 let pendingShots = []; // 本次识别的原截图，点「保存选中」后才落盘
 let pendingFiles = []; // 这些截图的原文件：识别前还不知道是不是新闻，保存时再按新闻的清晰度重压
+let importRun = null;  // 这次导入：{ id, at, uploaded, saved }，saved 是已经存下来的图片序号
 let shotReceipts = []; // 认出的小票照片，一张照片可以有几张小票：{ image, thumb, date, dateFromPhoto, note, receipts, ok, error, _checked }
 
 async function imageToBase64(file, maxSide = 1568, quality = 0.88) {
@@ -678,6 +683,9 @@ async function recognize({ files = [], imageUrls = [], text = "", link = "" }) {
   shotResults = [];
   shotReceipts = [];
   pendingShots = [];
+  // 开始时就记一条：关掉窗口或页面，这些图就算未保存
+  importRun = files.length ? { id: uid(), at: now(), uploaded: files.length, saved: new Set() } : null;
+  if (importRun) recordImport();
   $("#shotResults").innerHTML = "";
   $("#btnShotSave").disabled = true;
   $("#shotState").textContent = imageUrls.length ? `正在下载 ${imageUrls.length} 张配图…` : "正在用 Claude Haiku 5.5 识别…";
@@ -721,6 +729,7 @@ async function recognize({ files = [], imageUrls = [], text = "", link = "" }) {
       id: uid(),
       category: CATS[r.category] ? r.category : "novel",
       title: r.title.trim(),
+      _image: r.image - 1,
       note: r.note || "",
       link: r.link || link,
       rating: 3,
@@ -742,6 +751,7 @@ async function recognize({ files = [], imageUrls = [], text = "", link = "" }) {
     if (receiptAt.length && !waitingForPass) {
       $("#shotState").textContent = `正在读 ${receiptAt.length} 张小票…`;
       shotReceipts = await readReceipts(receiptAt.map((n) => files[n]));
+      shotReceipts.forEach((p, n) => { p._image = receiptAt[n]; });
     }
     const readable = shotReceipts.filter((p) => p.ok).length;
     $("#shotState").textContent = [
@@ -816,6 +826,40 @@ function renderReceipts() {
     return `<section class="receipt-day"><h4>${esc(d)} · ${photos.length} 张</h4>${photos.map(receiptCard).join("")}</section>`;
   }).join("") + (unread.length ? `<section class="receipt-day"><h4>没认出小票</h4>${unread.map(receiptCard).join("")}</section>` : "");
 }
+// ---------- 导入记录 ----------
+function recordImport() {
+  const { id, at, uploaded, saved } = importRun;
+  imports = [{ id, at, uploaded, accepted: saved.size, dirty: true }, ...imports.filter((x) => x.id !== id)];
+  lsSet(LS_IMPORTS, imports);
+  renderImports();
+  scheduleSync();
+}
+function renderImports() {
+  const uploaded = imports.reduce((n, x) => n + x.uploaded, 0), accepted = imports.reduce((n, x) => n + x.accepted, 0);
+  $("#importSummary").textContent = imports.length ? `累计上传 ${uploaded} 张：已保存 ${accepted} 张，未保存 ${uploaded - accepted} 张` : "";
+  $("#importList").innerHTML = imports.length ? imports.map((x) => `
+    <li><span><b>${esc(fmtTime(x.at))}</b><br>
+      <span class="muted small">上传 ${x.uploaded} 张 · 已保存 ${x.accepted} 张 · 未保存 ${x.uploaded - x.accepted} 张</span></span></li>`).join("")
+    : `<li class="muted small">还没有导入过截图。</li>`;
+}
+async function syncImports() {
+  const dirty = imports.filter((x) => x.dirty);
+  if (dirty.length) {
+    const { error } = await sb.rpc("mc_import_put", { p_pass: cfg.syncPass, p_rows: dirty.map(({ dirty: _, ...x }) => x) });
+    if (error) throw error;
+    // 上传途中又改过的是新对象，留到下一轮
+    imports = imports.map((x) => (dirty.includes(x) ? { ...x, dirty: false } : x));
+  }
+  const { data, error } = await sb.rpc("mc_import_list", { p_pass: cfg.syncPass });
+  if (error) throw error;
+  if (!data) return;
+  const waiting = imports.filter((x) => x.dirty);
+  imports = [...waiting, ...data.filter((r) => !waiting.some((x) => x.id === r.id))]
+    .sort((a, b) => new Date(b.at) - new Date(a.at));
+  lsSet(LS_IMPORTS, imports);
+  renderImports();
+}
+
 const shotSavable = () => shotResults.some((r) => r._checked) || shotReceipts.some((p) => p.ok && p._checked);
 
 async function uploadReceipts() {
@@ -825,6 +869,7 @@ async function uploadReceipts() {
       const r = await receiptCall({ action: "upload", image: p.image, reviewed: { date: p.date, receipts: p.receipts } });
       if (!r.ok) throw new Error(r.note || "上传失败");
       p.sent = true; sent++; mac = r.mac || mac;
+      importRun?.saved.add(p._image);
     } catch (err) { p.uploadError = err.message; }
   }
   shotReceipts = shotReceipts.filter((p) => !p.sent);
@@ -1021,7 +1066,8 @@ $("#btnShotSave").addEventListener("click", async () => {
   }
   pendingShots = [];
   pendingFiles = [];
-  for (const { _checked, _seen, ...r } of picked) {
+  for (const { _image } of picked) importRun?.saved.add(_image >= 0 && _image < importRun.uploaded ? _image : 0);
+  for (const { _checked, _seen, _image, ...r } of picked) {
     r.extra = Object.fromEntries(Object.entries(r.extra).filter(([, v]) => v && v.trim()));
     if (!CATS[r.category]?.links) r.links = [];
     if (!hasAliases(r.category)) r.aliases = [];
@@ -1030,6 +1076,7 @@ $("#btnShotSave").addEventListener("click", async () => {
   save();
   shotResults = shotResults.filter((r) => !picked.includes(r)); // 小票传失败留在对话框重试时，收藏不重复保存
   const { sent, mac } = await uploadReceipts();
+  if (importRun) recordImport();
   const done = [picked.length ? `已收藏 ${picked.length} 条 ⭐` : "", sent ? `${sent} 张小票已送到 AutoReceipt${mac && !mac.online ? "，Mac 醒来后归档" : ""}` : ""].filter(Boolean).join("，");
   if (shotReceipts.some((p) => p.ok && p._checked)) {
     $("#shotState").textContent = "有小票没上传成功，可以再点一次保存重试：";
@@ -1067,6 +1114,7 @@ function openSettings() {
   sform.apiKey.value = cfg.apiKey || "";
   sform.syncPass.value = cfg.syncPass || "";
   sform.receiptPass.value = cfg.receiptPass || "";
+  renderImports();
   $("#hideDone").innerHTML = Object.entries(CATS).filter(([k]) => !isArchive(k)).map(([k, c]) =>
     `<label class="check"><input type="checkbox" name="hide_${k}" ${doneHidden(k) ? "checked" : ""}>${c.name}</label>`).join("");
   $("#shuyuServer").value = shuyuServer();
@@ -1403,6 +1451,7 @@ async function doSync(manual) {
     }
     // 云端还没建 mc_put_image 时（PGRST202）先留在本机，下次再传
     await uploadPendingShots().catch((e) => { if (e?.code !== "PGRST202") throw e; console.warn("跳过原图上传：", e.message); });
+    await syncImports().catch((e) => { if (e?.code !== "PGRST202") throw e; console.warn("跳过导入记录：", e.message); });
     setSyncStatus("✓ 已同步 " + fmtTime(now()).slice(11));
     if (manual) toast("同步完成");
   } catch (err) {
