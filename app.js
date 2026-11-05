@@ -37,6 +37,8 @@ const APPS = {
   foodcollection: { name: "FoodCollection" },
   // Mac 上的拾闻：这里的「新闻」由它存成桌面 PDF，存好后回报「已保存」。PDF 只在那台 Mac 上
   clipcollections: { name: "拾闻" },
+  // iPhone 快捷指令：只能往截图收件箱里放图，碰不到任何分类
+  shortcut: { name: "iPhone 快捷指令", pairHint: "把这个配对码填进快捷指令开头的「文本」动作（只显示这一次）：" },
 };
 // 默认隐藏「已实现」按钮的分类：小说下载到书屿就算数了
 const HIDE_DONE = { novel: true };
@@ -528,6 +530,10 @@ ${Object.entries(CATS).map(([k, c]) => `- ${k}: ${c.name}${c.fields.length || c.
 let shotResults = [];
 let pendingShots = []; // 本次识别的原截图，点「保存选中」后才落盘
 let pendingFiles = []; // 这些截图的原文件：识别前还不知道是不是新闻，保存时再按新闻的清晰度重压
+let inboxId = null;        // 对话框里正在处理的 iPhone 收件箱截图
+let inboxDeferred = false; // 这次打开页面先不处理收件箱：用户关掉了对话框，或者读取失败
+let inboxBusy = false;
+let inboxRun = null;       // 快捷指令打开 #inbox 后的这一轮：{ saved, dropped }，看完后带用户回快捷指令
 
 async function imageToBase64(file, maxSide = 1568, quality = 0.88) {
   const bmp = await createImageBitmap(file);
@@ -666,10 +672,12 @@ async function ensureApiKey() {
   return false;
 }
 
-async function recognize({ files = [], imageUrls = [], text = "", link = "" }) {
+async function recognize({ files = [], imageUrls = [], text = "", link = "", fromInbox = null }) {
   if (!files.length && !imageUrls.length && !text) return;
   if (!(await ensureApiKey())) return;
   const dlg = $("#dlgShot");
+  inboxId = fromInbox;
+  $("#btnShotDiscard").hidden = !fromInbox;
   shotResults = [];
   pendingShots = [];
   $("#shotResults").innerHTML = "";
@@ -766,6 +774,13 @@ function parseShare(raw) {
 }
 
 function handleShareHash() {
+  if (location.hash === "#inbox") {
+    history.replaceState(null, "", location.pathname + location.search);
+    inboxDeferred = false;
+    inboxRun = { saved: 0, dropped: 0 };
+    checkInbox();
+    return;
+  }
   const m = location.hash.match(/^#add=([\s\S]*)$/);
   if (!m) return;
   history.replaceState(null, "", location.pathname + location.search);
@@ -900,13 +915,14 @@ $("#shotResults").addEventListener("click", (e) => {
 $("#btnShotSave").addEventListener("click", async () => {
   const picked = shotResults.filter((r) => r._checked && r.title.trim());
   const ts = now();
+  let stored = true;
   if (picked.some((r) => r.shots) && pendingShots.length) {
     try {
       if (picked.some((r) => r.shots && isArchive(r.category))) {
         pendingShots = await Promise.all(pendingShots.map(async (s, n) => ({ ...s, data: await newsShotData(pendingFiles[n]) })));
       }
       await storeShots(pendingShots);
-    } catch (err) { toast("原截图保存失败：" + err.message); }
+    } catch (err) { stored = false; toast("原截图保存失败：" + err.message); }
   }
   pendingShots = [];
   pendingFiles = [];
@@ -917,8 +933,81 @@ $("#btnShotSave").addEventListener("click", async () => {
     items.push({ ...r, updatedAt: ts });
   }
   save();
+  const fromInbox = inboxId;
+  inboxId = null;
   $("#dlgShot").close();
   toast(`已收藏 ${picked.length} 条 ⭐`);
+  if (!fromInbox) return;
+  // 收件箱清空后快捷指令就会删相册原图：这张和它的收藏都到了云端，才能从收件箱拿掉
+  inboxBusy = true;
+  const kept = stored && await flushToCloud();
+  inboxBusy = false;
+  if (kept) finishInbox(fromInbox, "saved");
+  else { inboxDeferred = true; toast("这张还没存到云端，先留在收件箱，相册里的原图不会删"); }
+});
+
+// ---------- iPhone 收件箱 ----------
+// 快捷指令上传后等在那里，收件箱清空才删相册里的原图：保存或丢弃后才从云端删除，关掉对话框就留到下次。
+// 一次处理一张：识别结果会带上本次所有截图，几张不相关的放在一起，每一条都会挂上全部截图
+function inboxFile(dataUrl) {
+  const [head, b64] = dataUrl.split(",");
+  const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  return new File([bytes], "inbox.jpg", { type: head.match(/^data:([^;]+)/)?.[1] || "image/jpeg" });
+}
+async function checkInbox() {
+  if (!cfg.syncPass || inboxBusy || inboxDeferred || document.querySelector("dialog[open]")) return;
+  inboxBusy = true;
+  try {
+    const { data: ids, error } = await sb.rpc("mc_inbox_list", { p_pass: cfg.syncPass });
+    if (error) {
+      if (error.code !== "PGRST202") throw error; // 云端还没执行 007 迁移时跳过
+      return;
+    }
+    if (document.querySelector("dialog[open]")) return;
+    if (!ids?.length) { if (inboxRun) showInboxDone(); return; }
+    if (!(await ensureApiKey())) { inboxDeferred = true; return; }
+    const { data, error: getError } = await sb.rpc("mc_inbox_get", { p_pass: cfg.syncPass, p_id: ids[0] });
+    if (getError) throw getError;
+    if (!data) return; // 别的设备刚处理掉
+    await recognize({ files: [inboxFile(data)], fromInbox: ids[0] });
+    if (ids.length > 1) toast(`iPhone 收件箱还有 ${ids.length - 1} 张截图`);
+  } catch (err) {
+    console.error(err);
+    inboxDeferred = true;
+    toast("读取 iPhone 收件箱失败：" + (err?.message || err));
+  } finally {
+    inboxBusy = false;
+  }
+}
+async function finishInbox(id, outcome) {
+  const { error } = await sb.rpc("mc_inbox_delete", { p_pass: cfg.syncPass, p_id: id });
+  if (error) { inboxDeferred = true; return toast(syncError(error)); }
+  if (inboxRun) inboxRun[outcome]++;
+  checkInbox();
+}
+// 等正在进行的同步结束，再立刻同步一轮，把刚保存的收藏和原截图都传上云端
+async function flushToCloud() {
+  if (syncing) await syncing;
+  clearTimeout(syncTimer);
+  return sync();
+}
+function showInboxDone() {
+  const { saved, dropped } = inboxRun;
+  inboxRun = null;
+  $("#inboxDoneState").textContent = `保存 ${saved} 张，丢弃 ${dropped} 张。回到快捷指令后，系统会问一次是否删除相册里的原图。`;
+  $("#dlgInboxDone").showModal();
+}
+$("#btnShotDiscard").addEventListener("click", () => {
+  if (!inboxId || !confirm("丢弃这张截图？不存进收藏，云端也不再保留。")) return;
+  const id = inboxId;
+  inboxId = null;
+  $("#dlgShot").close();
+  finishInbox(id, "dropped");
+});
+$("#dlgShot").addEventListener("close", () => {
+  $("#btnShotDiscard").hidden = true;
+  // 没保存就关掉：这次打开页面不再弹，下次再处理，这一轮也不算看完
+  if (inboxId) { inboxId = null; inboxDeferred = true; inboxRun = null; }
 });
 
 $("#btnShot").addEventListener("click", () => $("#shotInput").click());
@@ -992,7 +1081,7 @@ $("#btnPair").addEventListener("click", async () => {
     return toast(syncError(error));
   }
   $("#pairCode").hidden = false;
-  $("#pairCode").innerHTML = `<p class="small">在${esc(APPS[app].name)}的设置里粘贴这个配对码（只显示这一次）：</p>
+  $("#pairCode").innerHTML = `<p class="small">${esc(APPS[app].pairHint || `在${APPS[app].name}的设置里粘贴这个配对码（只显示这一次）：`)}</p>
     <div class="row"><code id="pairToken">${esc(data.token)}</code><button type="button" class="ghost" id="btnCopyPair">复制</button></div>`;
   $("#pairName").value = "";
   loadAgents();
@@ -1170,7 +1259,7 @@ function syncError(err) {
   if (err?.code === "28P01") return "同步密码错误";
   if (err?.code === "MC429") return `同步密码错误次数太多，请 ${Math.ceil((+err.hint || 900) / 60)} 分钟后再试`;
   if (err?.code === "PGRST202") return "云端还没执行最新的迁移，见 supabase/README.md";
-  if (err?.code === "22023") return "云端还没执行最新的迁移（006_clipcollections.sql），见 supabase/README.md";
+  if (err?.code === "22023") return "云端还没执行最新的迁移（007_inbox.sql），见 supabase/README.md";
   return "同步失败：" + (err?.message || err);
 }
 
@@ -1259,7 +1348,7 @@ async function doSync(manual) {
   if (!cfg.syncPass) {
     setSyncStatus("");
     if (manual) toast("请先填写同步密码");
-    return;
+    return false;
   }
   setSyncStatus("⟳ 同步中…");
   try {
@@ -1284,16 +1373,19 @@ async function doSync(manual) {
     await uploadPendingShots().catch((e) => { if (e?.code !== "PGRST202") throw e; console.warn("跳过原图上传：", e.message); });
     setSyncStatus("✓ 已同步 " + fmtTime(now()).slice(11));
     if (manual) toast("同步完成");
+    return true;
   } catch (err) {
     console.error(err);
     setSyncStatus("⚠ 同步失败");
     toast(syncError(err));
+    return false;
   }
 }
 
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") sync(); });
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { sync(); checkInbox(); } });
 
 render();
 sync();
+if (!/^#(add=|inbox$)/.test(location.hash)) checkInbox();
 handleShareHash();
 checkClipboard();

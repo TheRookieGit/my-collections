@@ -28,6 +28,8 @@ w.localStorage.setItem('mc.config.v1', JSON.stringify({ apiKey: '', syncPass: 'p
 const fulfillRows = [{ itemId: 'n2', app: 'shuyu', ref: 'a.txt', url: 'https://therookiegit.github.io/shuyu/#book=x', title: '已下好的书', ownedAt: '2026-03-01T00:00:00Z', rejected: false }];
 // Screenshot recognition answers whatever the test sets in `reply`; the images never reach a canvas.
 let reply = [];
+let inbox = [];
+let pushFails = false;
 const config = {};
 const agents = [{ id: 'a1', name: '书屿 Windows', app: 'shuyu', createdAt: ts, lastSeen: null, revoked: false },
   { id: 'a0', name: 'foodcollection', app: 'foodcollection', createdAt: ts, lastSeen: null, revoked: true }];
@@ -39,11 +41,15 @@ w.createClient = () => ({
   rpc: async (name, args) => {
     rpcs.push([name, args]);
     if (name === 'mc_pull') return { data: [], error: null };
+    if (name === 'mc_push' && pushFails) return { data: null, error: { message: 'offline' } };
     if (name === 'mc_fulfill_pull') return { data: fulfillRows, error: null };
     if (name === 'mc_agent_list') return { data: agents.filter((a) => !a.deleted), error: null };
     if (name === 'mc_agent_delete') { agents.find((a) => a.id === args.p_id).deleted = true; return { data: null, error: null }; }
     if (name === 'mc_agent_create' && args.p_app === 'foodcollection') return { data: null, error: { code: '22023', message: 'unknown app' } };
     if (name === 'mc_agent_create') return { data: { id: 'a2', token: 'mch_' + '0'.repeat(48), app: args.p_app, name: 'x' }, error: null };
+    if (name === 'mc_inbox_list') return { data: inbox.map((r) => r.id), error: null };
+    if (name === 'mc_inbox_get') return { data: inbox.find((r) => r.id === args.p_id)?.data ?? null, error: null };
+    if (name === 'mc_inbox_delete') { inbox = inbox.filter((r) => r.id !== args.p_id); return { data: null, error: null }; }
     if (name === 'mc_get_config') return { data: structuredClone(config), error: null };
     if (name === 'mc_set_config') { Object.assign(config, args.p_data); return { data: null, error: null }; }
     return { data: null, error: null };
@@ -182,7 +188,7 @@ const tick = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   assert.ok($('[name="hide_novel"]').checked && !$('[name="hide_movie"]').checked);
   // A failed pairing says why beside the button, not only in a toast the dialog could cover.
   $('#pairApp').value = 'foodcollection'; $('#btnPair').click(); await tick();
-  assert.match($('#pairCode').textContent, /没能生成配对码：云端还没执行最新的迁移（006_clipcollections\.sql）/);
+  assert.match($('#pairCode').textContent, /没能生成配对码：云端还没执行最新的迁移（007_inbox\.sql）/);
   $('#pairApp').value = 'shuyu';
   // A revoked pairing can be deleted from the list; one in use only revoked.
   assert.match($('#agentList').textContent, /foodcollection · FoodCollection/);
@@ -263,5 +269,67 @@ const tick = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   assert.equal($('#lbl-todo').textContent, '想要', 'other categories keep their words');
   assert.equal($('button[data-status="done"]').hidden, false);
   console.log('PASS news: 待保存 / 已保存 only, no 已实现 or 不是这个, source and date on the cover');
+
+  // iPhone 收件箱：原图已经从相册删了，保存或丢弃之前不能从云端删
+  const png = 'data:image/jpeg;base64,AAAA';
+  const inboxDeletes = () => rpcs.filter(([n]) => n === 'mc_inbox_delete').length;
+  const hashTo = (hash) => { w.location.hash = hash; return tick(100); };
+  w.document.querySelector('dialog[open] [data-close]')?.click();
+  inbox = [{ id: 'i1', data: png }, { id: 'i2', data: png }, { id: 'i3', data: png }];
+  reply = [{ category: 'tool', title: '收件箱工具', note: '', link: '', aliases: '' }];
+  await hashTo('#inbox');
+  assert.ok($('#dlgShot').open, 'the shortcut opening #inbox starts recognition');
+  assert.equal(w.location.hash, '', 'the hash is cleared');
+  assert.equal($('#btnShotDiscard').hidden, false);
+  assert.equal($$('#shotResults .shot-item').length, 1);
+  $('#dlgShot [data-close]').click(); await tick();
+  assert.equal(inbox.length, 3, 'closing keeps the screenshot');
+  w.document.dispatchEvent(new w.Event('visibilitychange')); await tick(100);
+  assert.equal($('#dlgShot').open, false, 'and does not pop up again on its own');
+  await hashTo('#inbox');
+  assert.ok($('#dlgShot').open, 'running the shortcut again reopens it');
+  const before = inboxDeletes();
+  w.__shotDb.pending = async () => [];
+  w.__shotDb.put = async () => { throw new Error('quota'); };
+  $('#btnShotSave').click(); await tick(100);
+  assert.equal(inboxDeletes(), before, 'a screenshot that could not be kept stays in the inbox');
+  assert.equal($('#dlgShot').open, false);
+  w.__shotDb.put = async () => {};
+  await hashTo('#inbox');
+  assert.equal($('#btnShotSave').disabled, true, 'already collected, so only 丢弃这张 is left for a duplicate');
+  $('#dlgShot [data-close]').click(); await tick();
+  pushFails = true;
+  reply = [{ category: 'tool', title: '收件箱工具三', note: '', link: '', aliases: '' }];
+  await hashTo('#inbox');
+  $('#btnShotSave').click(); await tick(100);
+  assert.equal(inbox.length, 3, 'not in the cloud yet, so it stays and the album photo is not deleted');
+  pushFails = false;
+  reply = [{ category: 'tool', title: '收件箱工具二', note: '', link: '', aliases: '' }];
+  await hashTo('#inbox');
+  $('#btnShotSave').click(); await tick(100);
+  assert.deepEqual(inbox.map((r) => r.id), ['i2', 'i3'], 'saving removes that one');
+  assert.ok($('#dlgShot').open, 'and goes on to the next');
+  w.confirm = () => false;
+  $('#btnShotDiscard').click(); await tick();
+  assert.equal(inbox.length, 2, 'cancelling the confirm keeps it');
+  w.confirm = () => true;
+  $('#btnShotDiscard').click(); await tick(100);
+  assert.deepEqual(inbox.map((r) => r.id), ['i3'], 'discarding removes it');
+  $('#btnShotDiscard').click(); await tick(100);
+  assert.deepEqual(inbox, []);
+  assert.equal($('#dlgShot').open, false, 'nothing left to show');
+  assert.equal($('#btnShotDiscard').hidden, true);
+  assert.ok($('#dlgInboxDone').open, 'then it leads back to the shortcut');
+  assert.equal($('#btnInboxBack').getAttribute('href'), 'shortcuts://');
+  assert.match($('#inboxDoneState').textContent, /保存 1 张，丢弃 2 张/);
+  $('#dlgInboxDone [data-close]').click(); await tick();
+  inbox = [{ id: 'i4', data: png }];
+  reply = [{ category: 'tool', title: '收件箱工具四', note: '', link: '', aliases: '' }];
+  w.document.dispatchEvent(new w.Event('visibilitychange')); await tick(100);
+  assert.ok($('#dlgShot').open, 'opened without the shortcut');
+  $('#btnShotSave').click(); await tick(100);
+  assert.deepEqual(inbox, []);
+  assert.equal($('#dlgInboxDone').open, false, 'no shortcut is waiting, so no way back to show');
+  console.log('PASS the iPhone inbox: one at a time, kept until saved or discarded, closing defers it');
   process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });
