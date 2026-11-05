@@ -207,10 +207,58 @@ function renderList() {
       : ui.status === "owned" ? ["还没有已拥有的", "书屿、Plexus、Steamless、拾闻配对后，有了的会自动出现在这里"]
       : ["这里还空着", "点下面的「添加」，或者直接 Ctrl+V 粘贴一张截图"];
     $("#list").innerHTML = `<div class="empty"><p class="empty-head">${head}</p><p>${sub}</p></div>`;
+    keepVisiblePicks(list);
     return;
   }
+  keepVisiblePicks(list);
   $("#list").innerHTML = list.map(cardHtml).join("");
 }
+
+// ---------- 批量删除 ----------
+// 只留眼前列表里的：换分类、搜索之后，看不见的条目不会被一起删掉
+let selecting = false;
+let visibleIds = [];
+const picked = new Set();
+function keepVisiblePicks(list) {
+  visibleIds = list.map((i) => i.id);
+  for (const id of picked) if (!visibleIds.includes(id)) picked.delete(id);
+  renderSelectBar();
+}
+function renderSelectBar() {
+  document.body.classList.toggle("selecting", selecting);
+  $("#selectBar").hidden = !selecting;
+  $("#btnSelect").textContent = selecting ? "退出批量删除" : "批量删除";
+  $("#selectCount").textContent = `已选 ${picked.size} 条`;
+  $("#btnSelectAll").textContent = visibleIds.length && picked.size === visibleIds.length ? "取消全选" : "全选";
+  $("#btnSelectAll").disabled = !visibleIds.length;
+  $("#btnSelectDelete").disabled = !picked.size;
+}
+function setSelecting(on) {
+  selecting = on;
+  picked.clear();
+  renderList();
+}
+$("#btnSelect").addEventListener("click", () => setSelecting(!selecting));
+$("#btnSelectCancel").addEventListener("click", () => setSelecting(false));
+$("#btnSelectAll").addEventListener("click", () => {
+  const all = picked.size === visibleIds.length;
+  picked.clear();
+  if (!all) visibleIds.forEach((id) => picked.add(id));
+  $$("#list .card").forEach((c) => c.classList.toggle("picked", picked.has(c.dataset.id)));
+  renderSelectBar();
+});
+$("#btnSelectDelete").addEventListener("click", () => {
+  const chosen = items.filter((i) => picked.has(i.id));
+  const names = chosen.slice(0, 3).map((i) => `「${i.title}」`).join("、") + (chosen.length > 3 ? " 等" : "");
+  if (!chosen.length || !confirm(`删掉这 ${chosen.length} 条收藏：${names}？连接了的设备里也会一起删掉。`)) return;
+  // 软删除：保留墓碑，便于多设备同步
+  const ts = now();
+  items = items.map((i) => (picked.has(i.id) ? { ...i, deleted: true, updatedAt: ts } : i));
+  selecting = false;
+  picked.clear();
+  save();
+  toast(`已删除 ${chosen.length} 条`);
+});
 
 // 封面上标题下面那行：每个分类最想一眼看到的
 function coverSub(i) {
@@ -286,7 +334,8 @@ function parts(i) {
 function cardHtml(i) {
   const { c, cover, metas, owned, send, doneBtn } = parts(i);
   return `
-  <article class="card st-${stateOf(i)}" data-id="${i.id}" data-cat="${esc(i.category)}" style="--c:${c.hue}" title="点击查看详情">
+  <article class="card st-${stateOf(i)}${picked.has(i.id) ? " picked" : ""}" data-id="${i.id}" data-cat="${esc(i.category)}" style="--c:${c.hue}" title="${selecting ? "点击选中" : "点击查看详情"}">
+    ${selecting ? `<span class="pick-mark" aria-hidden="true"></span>` : ""}
     ${cover}
     <div class="card-body">
       ${i.note ? `<p class="note">${esc(i.note)}</p>` : ""}${metas ? `<div class="metas">${metas}</div>` : ""}
@@ -397,7 +446,14 @@ function onItemClick(e, box) {
 }
 $("#list").addEventListener("click", (e) => {
   const card = e.target.closest(".card");
-  if (card) onItemClick(e, card);
+  if (!card) return;
+  if (!selecting) return onItemClick(e, card);
+  // 选择时整张卡片只负责选中，上面的星星、链接、按钮都不触发
+  e.preventDefault();
+  const id = card.dataset.id;
+  if (picked.has(id)) picked.delete(id); else picked.add(id);
+  card.classList.toggle("picked", picked.has(id));
+  renderSelectBar();
 });
 $("#detailBody").addEventListener("click", (e) => {
   const box = e.target.closest(".detail-card");
@@ -840,7 +896,6 @@ function recordImport() {
 function renderImports() {
   const uploaded = imports.reduce((n, x) => n + x.uploaded, 0), accepted = imports.reduce((n, x) => n + x.accepted, 0);
   for (const id of importPicked) if (!imports.some((x) => x.id === id)) importPicked.delete(id);
-  $("#cntImports").textContent = uploaded;
   $("#importSummary").textContent = imports.length ? `累计上传 ${uploaded} 张：已保存 ${accepted} 张，未保存 ${uploaded - accepted} 张` : "";
   $("#importList").innerHTML = imports.length ? imports.map((x) => `
     <li><input type="checkbox" data-import="${esc(x.id)}" aria-label="选中 ${esc(fmtTime(x.at))} 的记录" ${importPicked.has(x.id) ? "checked" : ""}>

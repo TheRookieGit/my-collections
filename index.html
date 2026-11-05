@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Serif+SC:wght@500;600;700&display=swap">
-  <link rel="stylesheet" href="style.css?v=27">
+  <link rel="stylesheet" href="style.css?v=28">
 </head>
 <body>
   <header class="topbar">
@@ -23,7 +23,7 @@
     </div>
     <div class="top-actions">
       <span id="syncStatus" class="sync-status" title="同步状态"></span>
-      <button id="btnImports" class="imports-btn" title="查看截图导入记录">导入记录 <b id="cntImports">0</b></button>
+      <button id="btnImports" class="imports-btn" title="查看截图导入记录">导入记录</button>
       <button id="btnSettings" class="icon-btn" title="设置" aria-label="设置">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
       </button>
@@ -49,9 +49,17 @@
       <option value="rating-desc">等级高→低</option>
       <option value="rating-asc">等级低→高</option>
     </select>
+    <button id="btnSelect" class="ghost" type="button">批量删除</button>
   </section>
 
   <main id="list" class="list"></main>
+
+  <div id="selectBar" class="select-bar" hidden>
+    <span id="selectCount">已选 0 条</span>
+    <button id="btnSelectAll" class="ghost" type="button">全选</button>
+    <button id="btnSelectCancel" class="ghost" type="button">取消</button>
+    <button id="btnSelectDelete" class="primary" type="button" disabled>删除</button>
+  </div>
 
   <div class="fab-group">
     <button id="btnClip" class="fab secondary" hidden title="读取剪贴板里的小红书链接">
@@ -235,6 +243,6 @@
 
   <div id="toast" class="toast" popover="manual"></div>
 
-  <script type="module" src="app.js?v=33"></script>
+  <script type="module" src="app.js?v=34"></script>
 </body>
 </html>

@@ -552,7 +552,16 @@ dialog label.check {
 #importSummary { margin: 0; font-weight: 600; }
 #importSummary:empty { display: none; }
 .imports-btn { height: 40px; background: var(--card); border-color: var(--line); white-space: nowrap; }
-.imports-btn b { font-weight: 700; font-variant-numeric: tabular-nums; }
+.selecting .fab-group { display: none; }
+.selecting .card { position: relative; cursor: pointer; }
+.selecting .card.picked { outline: 3px solid var(--ink); outline-offset: 2px; }
+.pick-mark { position: absolute; top: 10px; left: 10px; z-index: 5; width: 24px; height: 24px; border-radius: 50%; border: 2px solid #fff; background: rgba(0,0,0,.35); display: grid; place-items: center; pointer-events: none; }
+.card.picked .pick-mark { background: var(--ink); border-color: var(--ink); }
+.card.picked .pick-mark::after { content: "✓"; color: var(--on-ink); font-size: 14px; font-weight: 700; line-height: 1; }
+.select-bar { position: fixed; z-index: 20; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); width: max-content; max-width: calc(100vw - 20px); display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 16px; border: 1px solid var(--line); border-radius: 999px; background: var(--card); box-shadow: var(--shadow-hover); }
+#selectCount { font-size: 14px; white-space: nowrap; font-variant-numeric: tabular-nums; margin-right: 4px; }
+.select-bar button { white-space: nowrap; padding: 7px 12px; }
+.selecting .list { padding-bottom: 90px; }
 .agent-list button, .nd-list button { padding: 5px 12px; font-size: 13px; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line-strong); flex: none; }
 .dot.on { background: var(--done); box-shadow: 0 0 0 3px var(--done-soft); }
