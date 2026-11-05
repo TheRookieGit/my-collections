@@ -28,10 +28,11 @@ w.localStorage.setItem('mc.config.v1', JSON.stringify({ apiKey: '', syncPass: 'p
 const fulfillRows = [{ itemId: 'n2', app: 'shuyu', ref: 'a.txt', url: 'https://therookiegit.github.io/shuyu/#book=x', title: '已下好的书', ownedAt: '2026-03-01T00:00:00Z', rejected: false }];
 // Screenshot recognition answers whatever the test sets in `reply`; the images never reach a canvas.
 let reply = [];
+let receiptImages = [];
 const config = {};
 const agents = [{ id: 'a1', name: '书屿 Windows', app: 'shuyu', createdAt: ts, lastSeen: null, revoked: false },
   { id: 'a0', name: 'foodcollection', app: 'foodcollection', createdAt: ts, lastSeen: null, revoked: true }];
-w.Anthropic = class { constructor() { this.messages = { create: async () => ({ stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify({ items: reply }) }] }) }; } };
+w.Anthropic = class { constructor() { this.messages = { create: async () => ({ stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify({ items: reply, receiptImages }) }] }) }; } };
 w.createImageBitmap = async () => ({ width: 10, height: 10 });
 w.HTMLCanvasElement.prototype.getContext = () => ({ drawImage() {} });
 w.HTMLCanvasElement.prototype.toDataURL = () => 'data:image/jpeg;base64,AAAA';
@@ -263,5 +264,71 @@ const tick = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   assert.equal($('#lbl-todo').textContent, '想要', 'other categories keep their words');
   assert.equal($('button[data-status="done"]').hidden, false);
   console.log('PASS news: 待保存 / 已保存 only, no 已实现 or 不是这个, source and date on the cover');
+
+  // 小票：只读不存，核对后才上传到 AutoReceipt，不进收藏
+  w.document.querySelector('dialog[open] [data-close]')?.click();
+  const pick = (names) => { Object.defineProperty($('#shotInput'), 'files', { configurable: true, value: names.map((n) => new w.File(['x'], n, { type: 'image/png' })) }); $('#shotInput').dispatchEvent(new w.Event('change')); };
+  reply = [shot('tool', '小票旁边的工具')];
+  receiptImages = [2];
+  pick(['tool.png', 'receipt.png']); await tick(100);
+  assert.match($('#shotState').textContent, /有 1 张小票没处理：在设置里填 AutoReceipt 口令/);
+  assert.equal($$('.receipt-photo').length, 0);
+  $('#dlgShot').close();
+
+  const sentToReceipt = [];
+  let uploadFails = true;
+  w.fetch = async (url, opts) => {
+    if (!String(url).includes('orvuihiojdplciilktvm')) throw new TypeError('Failed to fetch');
+    const body = JSON.parse(opts.body);
+    sentToReceipt.push([url, body, opts.headers['x-passcode']]);
+    const json = (status, data) => ({ status, ok: status < 400, json: async () => data });
+    if (body.action === 'detect') return json(200, { ok: true, date: '2026-10-08', dateFromPhoto: false, note: '', receipts: [
+      { date: '2026-10-08', merchant: 'Costco', total: 12.5, currency: 'USD', items: [{ name: 'Milk', quantity: 2, price: 8 }] },
+      { date: '2026-10-08', merchant: 'Card slip', total: 12.5, currency: 'USD', items: [] }] });
+    if (uploadFails) return json(500, { error: '服务器出错了' });
+    return json(200, { ok: true, mac: { online: false } });
+  };
+  $('#btnSettings').click(); await tick(100);
+  $('[name="receiptPass"]').value = 'rp';
+  $('#settingsForm').dispatchEvent(new w.Event('submit', { cancelable: true })); await tick(200);
+  w.document.querySelector('dialog[open] [data-close]')?.click(); await tick();
+  assert.equal(JSON.parse(w.localStorage.getItem('mc.config.v1')).receiptPass, 'rp');
+  assert.ok(!JSON.stringify(rpcs.filter(([n]) => n === 'mc_set_config')).includes('"rp"'), 'the passcode stays on this device');
+  const before2 = w.JSON.parse(w.localStorage.getItem('mc.items.v1')).length;
+  reply = [shot('tool', '小票旁边的工具二')];
+  pick(['tool.png', 'receipt.png']); await tick(100);
+  assert.equal(sentToReceipt.filter(([, b]) => b.action === 'upload').length, 0, 'nothing leaves before it is checked');
+  assert.equal(sentToReceipt[0][0], 'https://orvuihiojdplciilktvm.supabase.co/functions/v1/api');
+  assert.equal(sentToReceipt[0][2], 'rp');
+  assert.match($('.receipt-day h4').textContent, /2026-10-08 · 1 张/);
+  assert.match($('.receipt-photo').textContent, /请确认/, 'a date taken from the screenshot says so');
+  assert.match($('.receipt-photo').textContent, /USD 12\.50/);
+  assert.match($('.receipt-photo').textContent, /Milk ×2/);
+  assert.equal($$('.shot-item').length, 1, 'the receipt is not a collection item');
+  const date = $('[data-rk="date"]');
+  date.value = '2026-10-09'; date.dispatchEvent(new w.Event('change', { bubbles: true })); await tick();
+  assert.match($('.receipt-day h4').textContent, /2026-10-09/, 'moves to the corrected day');
+  assert.doesNotMatch($('.receipt-photo').textContent, /请确认/);
+  const name = $('[data-rk="merchant"]');
+  name.value = 'Costco Wholesale'; name.dispatchEvent(new w.Event('input', { bubbles: true }));
+  $('#btnShotSave').click(); await tick(100);
+  assert.ok($('#dlgShot').open, 'a failed upload stays on screen');
+  assert.match($('.receipt-photo').textContent, /没上传：服务器出错了/);
+  assert.equal($$('.shot-item').length, 0, 'the collection item is already saved');
+  assert.equal($('#btnShotSave').disabled, false, 'and it can be retried');
+  uploadFails = false;
+  $('#btnShotSave').click(); await tick(100);
+  assert.equal($('#dlgShot').open, false);
+  const uploads = sentToReceipt.filter(([, b]) => b.action === 'upload');
+  const last = uploads.at(-1)[1];
+  assert.equal(last.reviewed.date, '2026-10-09');
+  assert.deepEqual(last.reviewed.receipts.map((r) => [r.date, r.merchant]), [['2026-10-09', 'Costco Wholesale'], ['2026-10-09', 'Card slip']]);
+  const kept2 = w.JSON.parse(w.localStorage.getItem('mc.items.v1'));
+  assert.equal(kept2.length, before2 + 1, 'only the tool was collected');
+  assert.ok(!kept2.some((i) => /Costco/.test(i.title)));
+  const shotted = kept2.find((i) => i.title === '小票旁边的工具二');
+  assert.equal(shotted.shots.length, 1, 'the receipt screenshot is not attached to the item');
+  receiptImages = [];
+  console.log('PASS receipts: grouped by date, date and merchant corrected before upload, kept out of the collection, retried on failure');
   process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

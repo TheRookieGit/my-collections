@@ -4,6 +4,8 @@ import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 // Supabase 公开配置（publishable key 本来就是公开的；表对外关闭，只能凭同步密码通过函数读写，见 supabase/README.md）
 const SUPABASE_URL = "https://lxicymhrzkuiqisuiotg.supabase.co";
 const SUPABASE_KEY = "sb_publishable_KsJzV--VCz5k8WYQ-aqMLQ_rMgf-w9y";
+// AutoReceipt 的云函数：小票不进收藏，在这里核对后交给它，由 Mac 归档成当天的 PDF
+const RECEIPT_API = "https://orvuihiojdplciilktvm.supabase.co/functions/v1/api";
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 
 // ---------- 分类定义 ----------
@@ -506,8 +508,9 @@ const EXTRACT_SCHEMA = {
         additionalProperties: false,
       },
     },
+    receiptImages: { type: "array", items: { type: "integer" } },
   },
-  required: ["items"],
+  required: ["items", "receiptImages"],
   additionalProperties: false,
 };
 
@@ -523,11 +526,13 @@ ${Object.entries(CATS).map(([k, c]) => `- ${k}: ${c.name}${c.fields.length || c.
 - coupon 的 expiry 用 YYYY-MM-DD 格式；download 填下载/网盘/磁力链接，提取码写在链接后面。
 - note 用一两句中文简述关键信息（如优惠内容、推荐理由、地址、营业时间、提取码），配图里的文字也要看。
 - 笔记标题往往只是噱头（如"这片太绝了"），title 要用正文/配图里真正的名字。
+- 小票、发票、外卖或网购的订单截图、付款记录不是收藏：不要放进 items，把这张图的编号（「图 N」里的 N）写进 receiptImages。没有这类图片时 receiptImages 返回空数组。
 - 识别不出任何条目时返回空数组。`;
 
 let shotResults = [];
 let pendingShots = []; // 本次识别的原截图，点「保存选中」后才落盘
 let pendingFiles = []; // 这些截图的原文件：识别前还不知道是不是新闻，保存时再按新闻的清晰度重压
+let shotReceipts = []; // 认出的小票照片，一张照片可以有几张小票：{ image, thumb, date, dateFromPhoto, note, receipts, ok, error, _checked }
 
 async function imageToBase64(file, maxSide = 1568, quality = 0.88) {
   const bmp = await createImageBitmap(file);
@@ -671,6 +676,7 @@ async function recognize({ files = [], imageUrls = [], text = "", link = "" }) {
   if (!(await ensureApiKey())) return;
   const dlg = $("#dlgShot");
   shotResults = [];
+  shotReceipts = [];
   pendingShots = [];
   $("#shotResults").innerHTML = "";
   $("#btnShotSave").disabled = true;
@@ -695,7 +701,7 @@ async function recognize({ files = [], imageUrls = [], text = "", link = "" }) {
       messages: [{
         role: "user",
         content: [
-          ...images.map((im) => ({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: im.data } })),
+          ...images.flatMap((im, n) => [{ type: "text", text: `图 ${n + 1}` }, { type: "image", source: { type: "base64", media_type: "image/jpeg", data: im.data } }]),
           ...(text ? [{ type: "text", text: `<note>\n${text}\n</note>` }] : []),
           { type: "text", text: EXTRACT_PROMPT },
         ],
@@ -707,6 +713,9 @@ async function recognize({ files = [], imageUrls = [], text = "", link = "" }) {
     const out = response.content.filter((b) => b.type === "text").map((b) => b.text).join("");
     const parsed = JSON.parse(out);
 
+    // 小票的截图不挂到收藏条目上
+    const receiptAt = [...new Set(parsed.receiptImages || [])].map((n) => n - 1).filter((n) => n >= 0 && n < files.length);
+    const keptShots = shots.filter((_, n) => !receiptAt.includes(n));
     const ts = now();
     shotResults = (parsed.items || []).filter((r) => r.title?.trim()).map((r) => ({
       id: uid(),
@@ -723,19 +732,103 @@ async function recognize({ files = [], imageUrls = [], text = "", link = "" }) {
       links: r.download?.trim() ? [r.download.trim()] : [],
       aliases: hasAliases(r.category) ? splitList(r.aliases || "", /\s*\/\s*/).filter((a) => a !== r.title.trim()) : [],
       externalIds: {},
-      ...(shots.length ? { shots: shots.map((s) => s.id) } : {}),
+      ...(keptShots.length ? { shots: keptShots.map((s) => s.id) } : {}),
       _checked: true,
     }));
     markSeen(shotResults);
-    pendingShots = shots;
-    pendingFiles = files;
-    $("#shotState").textContent = shotResults.length ? `识别到 ${shotResults.length} 条，确认/修改后保存：` : "没有识别到可收藏的条目，可以手动添加。";
+    pendingShots = keptShots;
+    pendingFiles = files.filter((_, n) => !receiptAt.includes(n));
+    const waitingForPass = receiptAt.length && !cfg.receiptPass;
+    if (receiptAt.length && !waitingForPass) {
+      $("#shotState").textContent = `正在读 ${receiptAt.length} 张小票…`;
+      shotReceipts = await readReceipts(receiptAt.map((n) => files[n]));
+    }
+    const readable = shotReceipts.filter((p) => p.ok).length;
+    $("#shotState").textContent = [
+      shotResults.length ? `识别到 ${shotResults.length} 条` : "",
+      readable ? `${readable} 张小票，核对日期和商家后保存，会送到 AutoReceipt` : "",
+      waitingForPass ? `有 ${receiptAt.length} 张小票没处理：在设置里填 AutoReceipt 口令后重新导入` : "",
+    ].filter(Boolean).join("；") || "没有识别到可收藏的条目，可以手动添加。";
     renderShotResults();
   } catch (err) {
     console.error(err);
     const msg = err?.status === 401 ? "API Key 无效" : err?.message || String(err);
     $("#shotState").textContent = "识别失败：" + msg;
   }
+}
+
+// ---------- 小票 ----------
+// 识别规则和 AutoReceipt 手机页同一份（含它记住的纠正）。这里只读不存，核对后才上传
+async function receiptCall(body) {
+  let res;
+  try {
+    res = await fetch(RECEIPT_API, { method: "POST", headers: { "content-type": "application/json", "x-passcode": cfg.receiptPass }, body: JSON.stringify(body) });
+  } catch { throw new Error("连不上 AutoReceipt，请稍后重试"); }
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 401) throw new Error("AutoReceipt 口令不对，请在设置里检查");
+  if (!res.ok) throw new Error(data.error || `AutoReceipt 出错了（${res.status}）`);
+  return data;
+}
+const localDay = (ms) => { const d = new Date(ms); return new Date(ms - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+
+function readReceipts(files) {
+  return Promise.all(files.map(async (file) => {
+    const { dataUrl, data: image } = await imageToBase64(file, 2576, 0.85);
+    const photo = { image, thumb: dataUrl, date: "", dateFromPhoto: false, note: "", receipts: [], ok: false, error: "", _checked: false };
+    try {
+      const r = await receiptCall({ action: "detect", image, fallbackDate: localDay(file.lastModified || Date.now()) });
+      if (!r.ok) return { ...photo, note: r.note || "没有识别到小票" };
+      // 认得是小票但一个字都读不出来时也留一张，可以手填商家
+      const receipts = r.receipts?.length ? r.receipts : [{ date: r.date, merchant: "", total: 0, currency: "", items: [] }];
+      return { ...photo, ok: true, _checked: true, date: r.date, dateFromPhoto: !!r.dateFromPhoto, note: r.note || "", receipts };
+    } catch (err) { return { ...photo, error: err.message }; }
+  }));
+}
+
+const receiptMoney = (r) => (r.total ? `${r.currency ? r.currency + " " : ""}${Number(r.total).toFixed(2)}` : "");
+function receiptCard(p) {
+  const n = shotReceipts.indexOf(p);
+  if (!p.ok) return `<div class="receipt-photo" data-rp="${n}"><img src="${p.thumb}" alt="截图"><div class="receipt-body"><p class="warn small">${esc(p.error || p.note)}</p></div></div>`;
+  return `<div class="receipt-photo" data-rp="${n}">
+    <img src="${p.thumb}" alt="小票">
+    <div class="receipt-body">
+      <div class="row">
+        <input type="checkbox" data-rk="check" aria-label="送到 AutoReceipt" ${p._checked ? "checked" : ""}>
+        <input type="date" data-rk="date" value="${esc(p.date)}" aria-label="这张照片的日期" style="width:auto">
+      </div>
+      ${p.dateFromPhoto ? "" : `<p class="warn small">小票上没看到日期，用的是截图日期，请确认</p>`}
+      ${p.note ? `<p class="muted small">${esc(p.note)}</p>` : ""}
+      ${p.uploadError ? `<p class="warn small">没上传：${esc(p.uploadError)}</p>` : ""}
+      ${p.receipts.map((r, i) => `<div class="receipt-one">
+        <div class="row"><input data-rk="merchant" data-i="${i}" value="${esc(r.merchant)}" placeholder="商家"><span class="receipt-total">${esc(receiptMoney(r))}</span></div>
+        ${r.date !== p.date ? `<span class="muted small">小票日期 ${esc(r.date)}</span>` : ""}
+        ${r.items?.length ? `<details><summary>${r.items.length} 项商品</summary><ul>${r.items.map((it) => `<li><span>${esc(it.name)}${Number(it.quantity) > 1 ? ` ×${Number(it.quantity)}` : ""}</span><span>${it.price ? Number(it.price).toFixed(2) : ""}</span></li>`).join("")}</ul></details>` : ""}
+      </div>`).join("")}
+    </div>
+  </div>`;
+}
+// 和 AutoReceipt 一样按日期分组，同一天的照片会合成一个 PDF；没认出来的放最后，不会上传
+function renderReceipts() {
+  const days = [...new Set(shotReceipts.filter((p) => p.ok).map((p) => p.date))].sort().reverse();
+  const unread = shotReceipts.filter((p) => !p.ok);
+  return days.map((d) => {
+    const photos = shotReceipts.filter((p) => p.ok && p.date === d);
+    return `<section class="receipt-day"><h4>${esc(d)} · ${photos.length} 张</h4>${photos.map(receiptCard).join("")}</section>`;
+  }).join("") + (unread.length ? `<section class="receipt-day"><h4>没认出小票</h4>${unread.map(receiptCard).join("")}</section>` : "");
+}
+const shotSavable = () => shotResults.some((r) => r._checked) || shotReceipts.some((p) => p.ok && p._checked);
+
+async function uploadReceipts() {
+  let sent = 0, mac = null;
+  for (const p of shotReceipts.filter((x) => x.ok && x._checked)) {
+    try {
+      const r = await receiptCall({ action: "upload", image: p.image, reviewed: { date: p.date, receipts: p.receipts } });
+      if (!r.ok) throw new Error(r.note || "上传失败");
+      p.sent = true; sent++; mac = r.mac || mac;
+    } catch (err) { p.uploadError = err.message; }
+  }
+  shotReceipts = shotReceipts.filter((p) => !p.sent);
+  return { sent, mac };
 }
 
 // 解析快捷指令传来的内容：小红书分享文字 + 从笔记网页里匹配出的 "title/desc" 和 "url" 片段
@@ -857,7 +950,7 @@ function markSeen(results) {
 }
 
 function renderShotResults() {
-  $("#shotResults").innerHTML = shotResults.map((r, idx) => `
+  $("#shotResults").innerHTML = renderReceipts() + shotResults.map((r, idx) => `
     <div class="shot-item" data-idx="${idx}">
       <div class="row">
         <input type="checkbox" data-k="_checked" ${r._checked ? "checked" : ""}>
@@ -874,10 +967,27 @@ function renderShotResults() {
       <input data-k="link" value="${esc(r.link)}" placeholder="链接">
       <input data-k="note" value="${esc(r.note)}" placeholder="备注">
     </div>`).join("");
-  $("#btnShotSave").disabled = !shotResults.some((r) => r._checked);
+  $("#btnShotSave").disabled = !shotSavable();
 }
 
+$("#shotResults").addEventListener("change", (e) => {
+  if (e.target.dataset.rk !== "date" || !e.target.value) return;
+  const p = shotReceipts[+e.target.closest(".receipt-photo").dataset.rp];
+  // 改的是整张照片，和 AutoReceipt 一样；手动定的日期就不用再提示确认
+  p.date = e.target.value;
+  p.dateFromPhoto = true;
+  p.receipts.forEach((r) => { r.date = p.date; });
+  renderShotResults();
+});
 $("#shotResults").addEventListener("input", (e) => {
+  const receipt = e.target.closest(".receipt-photo");
+  if (receipt) {
+    const p = shotReceipts[+receipt.dataset.rp];
+    if (e.target.dataset.rk === "check") p._checked = e.target.checked;
+    else if (e.target.dataset.rk === "merchant") p.receipts[+e.target.dataset.i].merchant = e.target.value;
+    $("#btnShotSave").disabled = !shotSavable();
+    return;
+  }
   const box = e.target.closest(".shot-item");
   if (!box) return;
   const r = shotResults[+box.dataset.idx];
@@ -888,7 +998,7 @@ $("#shotResults").addEventListener("input", (e) => {
   else if (k) r[k] = e.target.value;
   else if (x) r.extra[x] = e.target.value;
   if (k === "category") renderShotResults();
-  $("#btnShotSave").disabled = !shotResults.some((r) => r._checked);
+  $("#btnShotSave").disabled = !shotSavable();
 });
 $("#shotResults").addEventListener("click", (e) => {
   const b = e.target.closest("[data-rate]");
@@ -900,6 +1010,7 @@ $("#shotResults").addEventListener("click", (e) => {
 $("#btnShotSave").addEventListener("click", async () => {
   const picked = shotResults.filter((r) => r._checked && r.title.trim());
   const ts = now();
+  $("#btnShotSave").disabled = true;
   if (picked.some((r) => r.shots) && pendingShots.length) {
     try {
       if (picked.some((r) => r.shots && isArchive(r.category))) {
@@ -917,8 +1028,17 @@ $("#btnShotSave").addEventListener("click", async () => {
     items.push({ ...r, updatedAt: ts });
   }
   save();
+  shotResults = shotResults.filter((r) => !picked.includes(r)); // 小票传失败留在对话框重试时，收藏不重复保存
+  const { sent, mac } = await uploadReceipts();
+  const done = [picked.length ? `已收藏 ${picked.length} 条 ⭐` : "", sent ? `${sent} 张小票已送到 AutoReceipt${mac && !mac.online ? "，Mac 醒来后归档" : ""}` : ""].filter(Boolean).join("，");
+  if (shotReceipts.some((p) => p.ok && p._checked)) {
+    $("#shotState").textContent = "有小票没上传成功，可以再点一次保存重试：";
+    renderShotResults();
+    if (done) toast(done);
+    return;
+  }
   $("#dlgShot").close();
-  toast(`已收藏 ${picked.length} 条 ⭐`);
+  if (done) toast(done);
 });
 
 $("#btnShot").addEventListener("click", () => $("#shotInput").click());
@@ -946,6 +1066,7 @@ const sform = $("#settingsForm");
 function openSettings() {
   sform.apiKey.value = cfg.apiKey || "";
   sform.syncPass.value = cfg.syncPass || "";
+  sform.receiptPass.value = cfg.receiptPass || "";
   $("#hideDone").innerHTML = Object.entries(CATS).filter(([k]) => !isArchive(k)).map(([k, c]) =>
     `<label class="check"><input type="checkbox" name="hide_${k}" ${doneHidden(k) ? "checked" : ""}>${c.name}</label>`).join("");
   $("#shuyuServer").value = shuyuServer();
@@ -960,7 +1081,7 @@ function readSettingsForm() {
   const hideDone = Object.fromEntries(hideCats.map((k) => [k, !!sform[`hide_${k}`]?.checked]));
   // 改动后标记待上传，下次同步时推到云端，其它设备会自动拿到
   const hideChanged = hideCats.some((k) => hideDone[k] !== doneHidden(k));
-  cfg = { ...cfg, apiKey, syncPass: sform.syncPass.value, hideDone, apiKeyDirty: cfg.apiKeyDirty || apiKey !== cfg.apiKey,
+  cfg = { ...cfg, apiKey, syncPass: sform.syncPass.value, receiptPass: sform.receiptPass.value, hideDone, apiKeyDirty: cfg.apiKeyDirty || apiKey !== cfg.apiKey,
     ...(hideChanged ? { hideDoneAt: now(), hideDoneDirty: true } : {}) };
   lsSet(LS_CFG, cfg);
   render();

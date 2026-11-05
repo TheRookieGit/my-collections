@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Serif+SC:wght@500;600;700&display=swap">
-  <link rel="stylesheet" href="style.css?v=23">
+  <link rel="stylesheet" href="style.css?v=25">
 </head>
 <body>
   <header class="topbar">
@@ -170,6 +170,13 @@
         <button type="button" id="btnSyncNow" class="ghost">立即同步</button>
       </fieldset>
       <fieldset>
+        <legend>AutoReceipt（小票）</legend>
+        <p class="muted small">填了才能把导入截图里的小票送到 AutoReceipt。这个口令能读写全部小票，只存在这台设备的浏览器里，不会同步。</p>
+        <label>AutoReceipt 口令
+          <input name="receiptPass" type="password" autocomplete="off">
+        </label>
+      </fieldset>
+      <fieldset>
         <legend>「已实现」按钮</legend>
         <p class="muted small">勾选的分类不显示「✓ 已实现」，下载到书屿、Plexus 就算数。开启云同步后所有设备一起变。</p>
         <div id="hideDone" class="checks"></div>
@@ -211,6 +218,6 @@
 
   <div id="toast" class="toast" popover="manual"></div>
 
-  <script type="module" src="app.js?v=28"></script>
+  <script type="module" src="app.js?v=31"></script>
 </body>
 </html>

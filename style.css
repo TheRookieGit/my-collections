@@ -510,6 +510,20 @@ fieldset > button { align-self: flex-start; }
 .shot-item input[type=checkbox] { width: auto; }
 .shot-item .seen { font-size: 12px; color: var(--accent); background: var(--accent-soft); padding: 4px 10px; border-radius: 999px; align-self: flex-start; }
 .shot-item .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.receipt-day { margin-top: 12px; }
+.receipt-day h4 { margin: 0 0 6px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.receipt-photo { display: flex; gap: 12px; border: 1px solid var(--line); border-radius: 16px; padding: 12px; margin-top: 8px; background: var(--card); }
+.receipt-photo > img { width: 64px; height: 96px; object-fit: cover; border-radius: 8px; flex: none; }
+.receipt-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.receipt-body p { margin: 0; }
+.receipt-body .row { align-items: center; flex-wrap: nowrap; }
+.receipt-body input[type=checkbox] { width: auto; }
+.receipt-one { display: flex; flex-direction: column; gap: 4px; }
+.receipt-one input { flex: 1; min-width: 0; }
+.receipt-total { font-size: 13px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.receipt-one details { font-size: 12px; color: var(--muted); }
+.receipt-one ul { list-style: none; margin: 4px 0 0; padding: 0; }
+.receipt-one li { display: flex; justify-content: space-between; gap: 12px; }
 
 input[type=checkbox] { accent-color: var(--ink); width: 16px; height: 16px; }
 .clip-text { font-family: var(--serif); font-weight: 600; font-size: 17px; word-break: break-word; }
