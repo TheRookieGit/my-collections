@@ -3,7 +3,7 @@
 
 alter table public.mc_agents drop constraint if exists mc_agents_app_check;
 alter table public.mc_agents add constraint mc_agents_app_check
-  check (app in ('hub', 'shuyu', 'plexus', 'steamless', 'foodcollection', 'clipcollections'));
+  check (app in ('hub', 'shuyu', 'plexus', 'steamless', 'foodcollection', 'clipcollections', 'newscollections'));
 
 create or replace function public.mc_app_categories(p_app text)
 returns text[] language sql immutable set search_path = '' as $$

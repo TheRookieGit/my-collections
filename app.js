@@ -22,7 +22,7 @@ const CATS = {
   place:      { name: "想去玩",   en: "Journeys",   hue: "#1F8A80", icon: '<path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/>', fields: [{ key: "location", label: "位置" }] },
   grocery:    { name: "超市购物", en: "Pantry",     hue: "#5E8A2E", icon: '<path d="M5 8h14l-1.2 11.1a2 2 0 0 1-2 1.9H8.2a2 2 0 0 1-2-1.9z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8"/>', fields: [{ key: "store", label: "超市" }, { key: "quantity", label: "数量" }] },
   // archive：存档类。拾闻存好 PDF 就算完成，所以只有「待保存 / 已保存」，没有「已实现」「不是这个」和别名
-  news:       { name: "新闻",     en: "News",       hue: "#2F6073", icon: '<path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h10A1.5 1.5 0 0 1 17 5.5V19a2 2 0 0 0 2 2H6a2 2 0 0 1-2-2z"/><path d="M17 9h3v10a2 2 0 0 1-2 2"/><path d="M7.5 8h6M7.5 12h6M7.5 16h4"/>', fields: [{ key: "source", label: "来源" }, { key: "published", label: "发布日期", type: "date" }, { key: "topic", label: "主题" }], fulfiller: "clipcollections", archive: true },
+  news:       { name: "新闻",     en: "News",       hue: "#2F6073", icon: '<path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h10A1.5 1.5 0 0 1 17 5.5V19a2 2 0 0 0 2 2H6a2 2 0 0 1-2-2z"/><path d="M17 9h3v10a2 2 0 0 1-2 2"/><path d="M7.5 8h6M7.5 12h6M7.5 16h4"/>', fields: [{ key: "source", label: "来源" }, { key: "published", label: "发布日期", type: "date" }, { key: "topic", label: "主题" }], fulfiller: "newscollections", archive: true },
 };
 const ALL_ICON = '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>';
 const svgIcon = (paths, cls = "") => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
@@ -38,7 +38,7 @@ const APPS = {
   // Mac 上的 FoodCollection（今天吃什么）：想吃清单就是这里的「餐厅」，吃过了回报「已拥有」
   foodcollection: { name: "FoodCollection" },
   // Mac 上的拾闻：这里的「新闻」由它存成桌面 PDF，存好后回报「已保存」。PDF 只在那台 Mac 上
-  clipcollections: { name: "拾闻" },
+  newscollections: { name: "拾闻" },
 };
 // 默认隐藏「已实现」按钮的分类：小说下载到书屿就算数了
 const HIDE_DONE = { novel: true };
@@ -299,7 +299,7 @@ function coverSub(i) {
 // 封面图：Steam 游戏用商店横幅，其余用分类自己的纹样。截图不当封面：截下来的多半是整屏，不是海报
 const steamHeader = (i) => i.externalIds?.steamAppId ? `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${Number(i.externalIds.steamAppId)}/header.jpg` : "";
 
-const SOURCES = { screenshot: "截图识别", xhs: "小红书", manual: "手动添加", steamless: "Steamless", clipcollections: "拾闻" };
+const SOURCES = { screenshot: "截图识别", xhs: "小红书", manual: "手动添加", steamless: "Steamless", newscollections: "拾闻" };
 
 // 卡片和详情共用的几块：封面、字段、已拥有、送去下载
 function parts(i) {
@@ -1591,7 +1591,7 @@ function syncError(err) {
   if (err?.code === "28P01") return "同步密码错误";
   if (err?.code === "MC429") return `同步密码错误次数太多，请 ${Math.ceil((+err.hint || 900) / 60)} 分钟后再试`;
   if (err?.code === "PGRST202") return "云端还没执行最新的迁移，见 supabase/README.md";
-  if (err?.code === "22023") return "云端还没执行最新的迁移（006_clipcollections.sql），见 supabase/README.md";
+  if (err?.code === "22023") return "云端还没执行最新的迁移（009_newscollections.sql），见 supabase/README.md";
   return "同步失败：" + (err?.message || err);
 }
 

@@ -230,7 +230,7 @@ const tick = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   assert.ok($('[name="hide_novel"]').checked && !$('[name="hide_movie"]').checked);
   // A failed pairing says why beside the button, not only in a toast the dialog could cover.
   $('#pairApp').value = 'foodcollection'; $('#btnPair').click(); await tick();
-  assert.match($('#pairCode').textContent, /没能生成配对码：云端还没执行最新的迁移（006_clipcollections\.sql）/);
+  assert.match($('#pairCode').textContent, /没能生成配对码：云端还没执行最新的迁移（009_newscollections\.sql）/);
   $('#pairApp').value = 'shuyu';
   // A revoked pairing can be deleted from the list; one in use only revoked.
   assert.match($('#agentList').textContent, /foodcollection · FoodCollection/);
@@ -292,7 +292,7 @@ const tick = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   w.__seed(JSON.parse(JSON.stringify([
     { id: 'w1', category: 'news', title: '已存好的新闻', link: 'https://a.com/x', extra: { source: '新华社', published: '2026-01-02', topic: '政策' }, createdAt: ts, updatedAt: ts, done: false },
     { id: 'w2', category: 'news', title: '还没存的新闻', link: 'https://a.com/y', extra: {}, createdAt: ts, updatedAt: ts, done: false },
-  ])), [{ itemId: 'w1', app: 'clipcollections', ref: 'w1', url: '', title: '已存好的新闻', ownedAt: '2026-03-01T00:00:00Z', rejected: false }]);
+  ])), [{ itemId: 'w1', app: 'newscollections', ref: 'w1', url: '', title: '已存好的新闻', ownedAt: '2026-03-01T00:00:00Z', rejected: false }]);
   w.document.querySelector('dialog[open] [data-close]')?.click();
   $('#catTabs [data-cat="news"]').click(); await tick();
   assert.equal($('#lbl-todo').textContent, '待保存');

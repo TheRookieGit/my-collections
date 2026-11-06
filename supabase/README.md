@@ -16,6 +16,7 @@
 | [006_clipcollections.sql](migrations/006_clipcollections.sql) | 新增「新闻」分类，可以给拾闻（Mac 应用 ClipCollections）配对：只读写「新闻」，PDF 存好后回报「已保存」 |
 | [007_import_log.sql](migrations/007_import_log.sql) | 截图导入记录：每次导入的时间、上传张数、已保存张数 |
 | [008_import_delete.sql](migrations/008_import_delete.sql) | 批量删除截图导入记录 |
+| [009_newscollections.sql](migrations/009_newscollections.sql) | 拾闻的标识改成 `newscollections`（Mac 应用改叫 NewsCollections）：已有的配对、已保存记录和条目来源一起改，不用重新配对 |
 
 想知道已经执行到哪一个，运行：
 
@@ -42,9 +43,9 @@ select setval('public.mc_check_locked', 1);
 
 | 函数 | 谁用 | 作用 |
 |---|---|---|
-| `mc_api_version()` | 各应用 | 接口版本（现在是 3），低于应用需要的版本时提示先执行新的迁移 |
+| `mc_api_version()` | 各应用 | 接口版本（现在是 4），低于应用需要的版本时提示先执行新的迁移 |
 | `mc_pull` / `mc_push` | 网页 | 拉取、推送全部收藏，`updatedAt` 较新者胜出 |
-| `mc_agent_create(p_pass, name, app)` | 网页 | 生成配对码（只显示这一次），`app` 是 `shuyu` / `plexus` / `steamless` / `foodcollection` / `clipcollections` |
+| `mc_agent_create(p_pass, name, app)` | 网页 | 生成配对码（只显示这一次），`app` 是 `shuyu` / `plexus` / `steamless` / `foodcollection` / `newscollections` |
 | `mc_agent_list` / `mc_agent_revoke` | 网页 | 查看、吊销已配对的设备 |
 | `mc_wishes(p_token, categories, since)` | 应用 | 增量拉取自己负责的分类（书屿：小说；Plexus：电影、电视剧；Steamless：游戏；FoodCollection：餐厅；拾闻：新闻），包含已删除的条目 |
 | `mc_wish_put(p_token, item)` | 应用 | 应用里「添加想看」直接写进中枢，只能写自己负责的分类 |
