@@ -257,6 +257,9 @@ class Quark(Drive):
     API = 'https://drive-pc.quark.cn/1/clouddrive/'
     SCAN = 'https://su.quark.cn/4_eMHBJ'
     CLIENT = {'client_id':532,'v':'1.2'}
+    # file/download only answers the desktop app: a browser gets 23018, "download file size limit", for any file.
+    DESKTOP = ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) quark-cloud-drive/2.5.20 '
+               'Chrome/100.0.4896.160 Electron/18.3.5.4-b478491100 Safari/537.36 Channel/pckk_other_ch')
 
     @property
     def signed_in(self):
@@ -290,9 +293,9 @@ class Quark(Drive):
         elif code!=50004001:raise NetDiskError('夸克登录没有完成：'+str(data.get('message') or code))
         return False
 
-    def api(self,path,data=None,**params):
+    def api(self,path,data=None,agent=AGENT,**params):
         result = self.session.json(self.API+path+'?'+urllib.parse.urlencode({'pr':'ucpro','fr':'pc',**params}),data,
-                                   headers={'Referer':'https://pan.quark.cn/','Origin':'https://pan.quark.cn'})
+                                   headers={'Referer':'https://pan.quark.cn/','Origin':'https://pan.quark.cn','User-Agent':agent})
         if result.get('code')==31001 or result.get('http')==401:self.expired()
         if result.get('code'):raise NetDiskError('夸克网盘：'+str(result.get('message') or result['code']))
         return result
@@ -343,9 +346,9 @@ class Quark(Drive):
                 for item in batch[len(saved):]:yield item,'没有转存成功'
 
     def link(self,ref):
-        entry = next(iter(self.api('file/download',{'fids':[ref['fid']]}).get('data') or []),{})
+        entry = next(iter(self.api('file/download',{'fids':[ref['fid']]},agent=self.DESKTOP).get('data') or []),{})
         if not entry.get('download_url'):raise NetDiskError('夸克网盘没有给出下载地址，可能文件已被删除。')
-        return entry['download_url'],{'Referer':'https://pan.quark.cn/'}
+        return entry['download_url'],{'Referer':'https://pan.quark.cn/','User-Agent':self.DESKTOP}
 
 
 class Baidu(Drive):
