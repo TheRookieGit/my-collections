@@ -24,7 +24,7 @@ class FakeDrives:
         self.calls,self.lock = [],threading.Lock()
         self.quark_polls = self.baidu_polls = self.quark_checks = 0
         self.quark_logged_in = True
-        self.quark_folder = self.baidu_folder = False
+        self.quark_dirs,self.baidu_dirs = {},set()
         self.baidu_cancel = False
         self.saved = {}
         self.drop_once = True
@@ -79,13 +79,16 @@ class FakeDrives:
                      'd1':[{'fid':'f1','file_name':'某剧.S01E01.mkv','dir':False,'size':len(EPISODE),'share_fid_token':'t1'}]}[query['pdir_fid']]
             return self.reply({'status':200,'code':0,'data':{'list':items},'metadata':{'_total':len(items)}})
         if path=='file/info/path_list':
-            assert data['file_path']==['/'+FOLDER]
-            return self.reply({'status':200,'code':0,'data':[{'fid':'mine'}] if self.quark_folder else []})
+            assert data['file_path'][0].startswith('/'+FOLDER)
+            found = self.quark_dirs.get(data['file_path'][0])
+            return self.reply({'status':200,'code':0,'data':[{'fid':found}] if found else []})
         if path=='file':
-            assert data['file_name']==FOLDER
-            self.quark_folder = True;return self.reply({'status':200,'code':0,'data':{'fid':'mine'}})
+            assert data['file_name']
+            made = {'0':('/','mine'),'mine':(f'/{FOLDER}/','sub')}[data['pdir_fid']]
+            self.quark_dirs[made[0]+data['file_name']] = made[1]
+            return self.reply({'status':200,'code':0,'data':{'fid':made[1]}})
         if path=='share/sharepage/save':
-            assert data['to_pdir_fid']=='mine'
+            assert data['to_pdir_fid'] in {'mine','sub'}
             self.saved['quark'] = data
             return self.reply({'status':200,'code':0,'data':{'task_id':'task'}})
         if path=='task':
@@ -124,12 +127,12 @@ class FakeDrives:
             return self.reply({'errno':0,'share_id':77,'uk':88,'list':items})
         if not signed:return self.reply({'errno':-6})
         if url.path=='/api/gettemplatevariable':return self.reply({'errno':0,'result':{'bdstoken':'bdstoken','username':'百度用户'}})
-        if url.path=='/api/list':return self.reply({'errno':0 if self.baidu_folder else -9,'list':[]})
+        if url.path=='/api/list':return self.reply({'errno':0 if query['dir'] in self.baidu_dirs else -9,'list':[]})
         if url.path=='/api/create':
-            assert form['path']=='/'+FOLDER
-            self.baidu_folder = True;return self.reply({'errno':0})
+            assert form['path'].startswith('/'+FOLDER)
+            self.baidu_dirs.add(form['path']);return self.reply({'errno':0})
         if url.path=='/share/transfer':
-            assert (query['shareid'],query['from'],query['sekey'],form['path'])==('77','88','rk=','/'+FOLDER)
+            assert (query['shareid'],query['from'],query['sekey'])==('77','88','rk=') and form['path'] in self.baidu_dirs
             ids = json.loads(form['fsidlist']);self.saved['baidu'] = ids
             return self.reply({'errno':0,'extra':{'list':[{'from_fs_id':i,'to':f'/{FOLDER}/Inception.2010.mkv'} for i in ids]}})
         if url.path=='/api/filemetas':
@@ -236,6 +239,20 @@ class NetDiskTests(unittest.TestCase):
         sink = io.BytesIO()
         self.assertEqual(drive.stream(ref,0,sink),200)
         self.assertEqual(sink.getvalue(),MOVIE)
+
+    def test_a_share_can_go_into_its_own_folder_inside_the_apps_folder(self):
+        self.sign_in(self.app,'quark')
+        drive = self.app.drive('quark')
+        share,files = drive.files({'drive':'quark','id':'qshare','code':''})
+        for _ in range(2):list(drive.save(share,files,'11.6.2026 某剧'))
+        self.assertEqual(self.fake.saved['quark']['to_pdir_fid'],'sub')
+        self.assertEqual(self.fake.quark_dirs,{'/'+FOLDER:'mine',f'/{FOLDER}/11.6.2026 某剧':'sub'})
+        self.assertEqual(sum(c['path'].endswith('/clouddrive/file') for c in self.fake.calls),2,'saving there again reuses the folders')
+        self.sign_in(self.app,'baidu')
+        drive = self.app.drive('baidu')
+        share,files = drive.files({'drive':'baidu','id':'bshare','code':'abcd'})
+        list(drive.save(share,files,'11.6.2026 某片'))
+        self.assertEqual(self.fake.baidu_dirs,{'/'+FOLDER,f'/{FOLDER}/11.6.2026 某片'})
 
     def test_signing_in_or_out_in_one_app_applies_to_every_app(self):
         self.assertFalse(self.other.drive('quark').signed_in)

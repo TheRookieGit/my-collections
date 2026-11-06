@@ -344,13 +344,17 @@ class Quark(Drive):
                 page += 1
         return share,found
 
-    def folder(self):
-        existing = self.api('file/info/path_list',{'file_path':['/'+self.saves_to],'namespace':'0'}).get('data') or []
+    def ensure(self,path,parent,name):
+        existing = self.api('file/info/path_list',{'file_path':[path],'namespace':'0'}).get('data') or []
         if existing:return existing[0]['fid']
-        return self.api('file',{'pdir_fid':'0','file_name':self.saves_to,'dir_path':'','dir_init_lock':False})['data']['fid']
+        return self.api('file',{'pdir_fid':parent,'file_name':name,'dir_path':'','dir_init_lock':False})['data']['fid']
 
-    def save(self,share,files):
-        target = self.folder()
+    def folder(self,name=''):
+        root = self.ensure('/'+self.saves_to,'0',self.saves_to)
+        return self.ensure(f'/{self.saves_to}/{name}',root,name) if name else root
+
+    def save(self,share,files,folder=''):
+        target = self.folder(folder)
         groups = {}
         for item in files:groups.setdefault(item['_parent'],[]).append(item)
         for parent,items in groups.items():
@@ -457,17 +461,20 @@ class Baidu(Drive):
                 page += 1
         return share,found
 
-    def folder(self,token):
-        path = '/'+self.saves_to
+    def ensure(self,path,token):
         try:self.api('api/list',dir=path,num=1)
         except NetDiskError as exc:
             if exc.login:raise
             self.api('api/create',{'path':path,'isdir':1,'block_list':'[]'},a='commit',bdstoken=token)
         return path
 
-    def save(self,share,files):
+    def folder(self,token,name=''):
+        root = self.ensure('/'+self.saves_to,token)
+        return self.ensure(f'{root}/{name}',token) if name else root
+
+    def save(self,share,files,folder=''):
         token = self.api('api/gettemplatevariable',fields='["bdstoken"]')['result']['bdstoken']
-        target = self.folder(token)
+        target = self.folder(token,folder)
         for start in range(0,len(files),100):
             batch = files[start:start+100]
             data = self.api('share/transfer',{'fsidlist':json.dumps([i['_fsid'] for i in batch]),'path':target},share['referer'],
