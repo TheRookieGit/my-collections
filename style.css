@@ -121,7 +121,7 @@ code { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: .9e
   margin: 0 0 6px; font-size: 11px; font-weight: 600; letter-spacing: .22em; text-transform: uppercase; color: var(--gold);
 }
 .topbar h1 { font-family: var(--serif); font-weight: 700; font-size: 44px; line-height: 1.05; letter-spacing: .02em; margin: 0; }
-.summary { margin: 10px 0 0; color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; min-height: 1.6em; }
+.summary { margin: 10px 0 0; color: var(--muted); font-size: 17px; font-variant-numeric: tabular-nums; min-height: 1.6em; }
 .top-actions { display: flex; align-items: center; gap: 10px; padding-bottom: 4px; }
 .sync-status { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .sync-status:not(:empty) { padding: 4px 12px; border-radius: 999px; background: var(--card); border: 1px solid var(--line); }
@@ -154,9 +154,6 @@ code { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: .9e
 .tile.active { background: var(--c, var(--ink)); border-color: transparent; color: #fff; box-shadow: 0 14px 28px -14px var(--c, rgba(0,0,0,.6)); }
 .tile.active .tile-icon { background: rgba(255,255,255,.18); color: #fff; }
 .tile.active .tile-en, .tile.active small { color: rgba(255,255,255,.82); opacity: 1; }
-.tile.active:not([style]), .tile.active:not([style]) .tile-icon { color: var(--on-ink); }
-.tile.active:not([style]) .tile-en, .tile.active:not([style]) small { color: color-mix(in srgb, var(--on-ink) 75%, transparent); }
-.tile.active:not([style]) .tile-icon { background: color-mix(in srgb, var(--on-ink) 16%, transparent); }
 
 /* ---------- 工具栏 ---------- */
 .toolbar { display: flex; gap: 10px; padding-bottom: 24px; flex-wrap: wrap; align-items: center; }

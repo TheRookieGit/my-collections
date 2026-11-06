@@ -160,11 +160,10 @@ function renderTabs() {
   for (const i of wanted) counts[i.category] = (counts[i.category] || 0) + 1;
   const total = wanted.length;
   const unsaved = counts.news || 0;
-  const ownedNotNews = live().filter((i) => stateOf(i) === "owned" && !isArchive(i.category)).length;
-  $("#summary").textContent = `${total - unsaved} 个心愿${ownedNotNews ? ` · ${ownedNotNews} 个已拥有` : ""}${unsaved ? ` · ${unsaved} 条新闻待保存` : ""}`;
-  const tabs = [["all", "全部", "All", "", ALL_ICON, total], ...Object.entries(CATS).map(([k, c]) => [k, c.name, c.en, c.hue, c.icon, counts[k] || 0])];
+  $("#summary").textContent = `${total - unsaved} 个心愿${unsaved ? ` · ${unsaved} 条新闻待保存` : ""}`;
+  const tabs = Object.entries(CATS).map(([k, c]) => [k, c.name, c.en, c.hue, c.icon, counts[k] || 0]);
   $("#catTabs").innerHTML = tabs
-    .map(([k, n, en, hue, icon, c]) => `<button data-cat="${k}" class="tile ${ui.cat === k ? "active" : ""} ${c ? "" : "zero"}"${hue ? ` style="--c:${hue}"` : ""}>
+    .map(([k, n, en, hue, icon, c]) => `<button data-cat="${k}" class="tile ${ui.cat === k ? "active" : ""} ${c ? "" : "zero"}" style="--c:${hue}">
       <span class="tile-icon">${svgIcon(icon)}</span>
       <span class="tile-text"><span class="tile-name">${n}</span><span class="tile-en">${en}</span></span>
       <small>${c}</small></button>`)
@@ -407,7 +406,8 @@ function render() { renderTabs(); renderList(); if ($("#dlgDetail").open) render
 $("#catTabs").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-cat]");
   if (!b) return;
-  ui.cat = b.dataset.cat;
+  // 默认看全部；点一个分类只看它，再点一次回到全部
+  ui.cat = ui.cat === b.dataset.cat ? "all" : b.dataset.cat;
   render();
 });
 $("#statusSeg").addEventListener("click", (e) => {
