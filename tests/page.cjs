@@ -380,6 +380,25 @@ const tick = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   assert.equal($('#importAll').disabled, true);
   $('#dlgImports').close();
 
+  // 分类按钮：默认全部，点一下只看它，再点一次回到全部
+  w.__seed([['t1', 'tool'], ['n1', 'novel'], ['n2', 'novel']].map(([id, category]) => ({ id, category, title: id, extra: {}, createdAt: ts, updatedAt: ts, done: false })), [{ itemId: 'n2', app: 'shuyu', ref: 'n2', url: '', title: 'n2', ownedAt: '2026-03-01T00:00:00Z', rejected: false }]);
+  $$('#catTabs .active').forEach((t) => t.click()); await tick();
+  $('button[data-status="all"]').click(); await tick();
+  assert.equal($('#catTabs [data-cat="all"]'), null, 'no 全部 tile');
+  const allCards = $$('#list .card').length;
+  assert.equal($$('#catTabs .active').length, 0, 'nothing is selected by default');
+  assert.doesNotMatch($('#summary').textContent, /已拥有/, 'summary no longer counts owned items');
+  $('#catTabs [data-cat="novel"]').click(); await tick();
+  const novelCards = $$('#list .card').length;
+  assert.ok(novelCards >= 2 && novelCards < allCards, 'a tile shows only its category');
+  $('#catTabs [data-cat="tool"]').click(); await tick();
+  const onlyTool = $$('#list .card').length;
+  assert.ok(onlyTool >= 1 && onlyTool + novelCards <= allCards, 'another tile switches straight to it');
+  $('#catTabs [data-cat="tool"]').click(); await tick();
+  assert.equal($$('#catTabs .active').length, 0, 'second click clears the selection');
+  assert.equal($$('#list .card').length, allCards, 'second click shows everything again');
+  console.log('PASS category tiles toggle');
+
   // 批量删除收藏
   w.__seed(['甲', '乙', '丙'].map((title, n) => ({ id: `b${n}`, category: 'tool', title, extra: {}, createdAt: ts, updatedAt: ts, done: false })), []);
   $('#catTabs [data-cat="tool"]').click(); await tick();
