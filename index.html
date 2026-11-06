@@ -62,7 +62,7 @@
   </div>
 
   <div class="fab-group">
-    <button id="btnClip" class="fab secondary" hidden title="读取剪贴板里的小红书链接">
+    <button id="btnClip" class="fab secondary" hidden title="读取剪贴板里的小红书或网盘链接">
       <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>粘贴链接</button>
     <button id="btnShot" class="fab secondary" title="截图识别">
       <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8a2 2 0 0 1 2-2h1.5l1.5-2h6l1.5 2H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><circle cx="12" cy="12.5" r="3.5"/></svg>截图识别</button>
@@ -152,9 +152,9 @@
   <!-- 剪贴板检测到小红书链接 -->
   <dialog id="dlgClip">
     <div class="dlg-body">
-      <h2>检测到小红书链接</h2>
+      <h2 id="clipTitle">检测到小红书链接</h2>
       <div id="clipText" class="clip-text"></div>
-      <p class="muted small">要收藏吗？会读取笔记正文和配图，用 Claude 自动解析。</p>
+      <p id="clipHint" class="muted small">要收藏吗？会读取笔记正文和配图，用 Claude 自动解析。</p>
       <div class="dlg-actions">
         <span class="spacer"></span>
         <button type="button" class="ghost" data-close>忽略</button>

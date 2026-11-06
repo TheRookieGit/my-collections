@@ -178,6 +178,49 @@ const tick = (ms = 50) => new Promise((r) => setTimeout(r, ms));
   $('#dlgShot').close();
   console.log('PASS screenshot results: ones already saved and repeats unchecked, other names kept as aliases');
 
+  // Pasting share links: new ones become new items, a game already collected gets the link, a link already kept is left alone.
+  const paste = async (text) => { const e = new w.Event('paste', { bubbles: true, cancelable: true }); e.clipboardData = { files: [], getData: () => text }; w.document.body.dispatchEvent(e); await tick(100); };
+  const itemNow = (id) => JSON.parse(w.localStorage.getItem('mc.items.v1')).find((i) => i.id === id);
+  reply = [{ index: 0, category: 'game', title: 'Hades', aliases: '' }, { index: 1, category: 'movie', title: '新电影', aliases: 'New Film / 新电影' }];
+  const before = itemNow('g1').updatedAt;
+  if ($('#dlgEdit').open) $('#dlgEdit').close();
+  await paste('Hades https://pan.quark.cn/s/aaa 提取码：x1y2\n「新电影」 https://pan.baidu.com/s/1bbb\nhttps://pan.quark.cn/s/abc\n「新电影」第二部分 https://pan.quark.cn/s/ccc');
+  let rows2 = $$('#shotResults .shot-item');
+  assert.equal(rows2.length, 4);
+  assert.deepEqual(rows2.map((r) => r.querySelector('[data-k="_checked"]').checked), [true, true, false, true]);
+  assert.match(rows2[0].textContent, /已收藏过「Hades」，保存时把链接加进去/);
+  assert.equal(rows2[0].querySelector('[data-k="download"]').value, 'https://pan.quark.cn/s/aaa?pwd=x1y2', 'the code goes in the address');
+  assert.equal(rows2[1].querySelector('[data-k="aliases"]').value, 'New Film');
+  assert.match(rows2[2].textContent, /这条链接已经在「旧小说」里了/);
+  assert.ok(![...rows2[0].querySelectorAll('option')].some((o) => o.value === 'coupon'), 'only categories that keep links');
+  assert.equal(rows2[3].querySelector('[data-k="title"]').value, '新电影', 'the name in quotes');
+  const title3 = rows2[3].querySelector('[data-k="title"]');
+  title3.value = '新电影'; title3.dispatchEvent(new w.Event('input', { bubbles: true }));
+  rows2[3].querySelector('[data-k="category"]').value = 'movie'; rows2[3].querySelector('[data-k="category"]').dispatchEvent(new w.Event('input', { bubbles: true })); await tick();
+  $('#btnShotSave').click(); await tick(100);
+  assert.deepEqual(itemNow('g1').links, ['https://pan.quark.cn/s/aaa?pwd=x1y2'], 'added to the game already collected');
+  assert.ok(itemNow('g1').updatedAt > before, 'and the change syncs to Steamless');
+  const film = JSON.parse(w.localStorage.getItem('mc.items.v1')).filter((i) => i.title === '新电影');
+  assert.equal(film.length, 1, 'two parts of one film stay one item');
+  assert.deepEqual(film[0].links, ['https://pan.baidu.com/s/1bbb', 'https://pan.quark.cn/s/ccc']);
+  assert.equal(film[0].source, 'manual');
+  assert.deepEqual(itemNow('n1').links, ['https://pan.quark.cn/s/abc 提取码 1234'], 'the link already kept is untouched');
+  assert.match($$('.card, article').map((c) => c.textContent).join(' '), /同步到Steamless/);
+
+  // With Plexus signed in on this browser it reads the share's title; without Claude the rules clean it.
+  const plexusFetch = w.fetch; let plexusAsked;
+  w.localStorage.setItem('plexus-token', 'pt');
+  w.fetch = async (url, opts) => { plexusAsked = [url, opts.headers.Authorization, JSON.parse(opts.body).text]; return { ok: true, json: async () => ({ shares: [{ title: '[合集]空洞骑士 v1.5 免安装中文版.zip', files: [] }] }) }; };
+  reply = [];
+  await paste('https://pan.quark.cn/s/ddd?pwd=9876');
+  assert.deepEqual(plexusAsked, ['https://windows.tailc0b5f5.ts.net:8443/api/transfers/resolve', 'Bearer pt', 'https://pan.quark.cn/s/ddd?pwd=9876']);
+  assert.equal($('#shotResults [data-k="title"]').value, '空洞骑士');
+  assert.equal($('#shotResults [data-k="category"]').value, 'game');
+  $('#dlgShot').close();
+  w.fetch = plexusFetch; w.localStorage.removeItem('plexus-token');
+
+  console.log('PASS pasted share links: identified, merged into what is already collected, confirmed before saving');
+
   $('#btnSettings').click(); await tick(100);
   assert.match($('#agentList').textContent, /书屿 Windows · 书屿/);
   assert.match($('#ndBox').textContent, /Windows 电脑没有连上，暂时不能登录网盘/);
