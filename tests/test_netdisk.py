@@ -1,4 +1,5 @@
 from email.message import Message
+import http.client
 import io
 import json
 import tempfile
@@ -142,6 +143,32 @@ def wait(condition,label,seconds=5):
         if condition():return
         time.sleep(.01)
     raise AssertionError('Timed out: '+label)
+
+
+class ConnectionTests(unittest.TestCase):
+    def test_a_dead_address_is_given_up_on_quickly_but_a_slow_transfer_is_not(self):
+        with patch('socket.create_connection') as connect:
+            sock = netdisk.Connection('cdn.test')._create_connection(('cdn.test',443),60,None)
+        self.assertEqual(connect.call_args.args[1],netdisk.CONNECT_SECONDS)
+        sock.settimeout.assert_called_once_with(60)
+
+    def test_a_garbled_reply_counts_as_unreachable_so_the_download_is_retried(self):
+        with patch.object(netdisk.OPENER,'open',side_effect=http.client.BadStatusLine('')),self.assertRaises(Unreachable):
+            netdisk.fetch(None,1)
+        response = io.BytesIO()
+        response.status,response.headers = 206,Message()
+        response.read = lambda size:(_ for _ in ()).throw(http.client.IncompleteRead(b''))
+        with patch.object(netdisk.OPENER,'open',return_value=response),self.assertRaises(Unreachable):
+            netdisk.fetch(None,1,io.BytesIO())
+
+    def test_progress_shows_up_well_before_a_megabyte_arrives(self):
+        sizes = []
+        response = io.BytesIO(b'x'*100)
+        response.status,response.headers = 206,Message()
+        read = response.read
+        response.read = lambda size:(sizes.append(size),read(size))[1]
+        with patch.object(netdisk.OPENER,'open',return_value=response):netdisk.fetch(None,1,io.BytesIO())
+        self.assertLessEqual(sizes[0],64*1024)
 
 
 class NetDiskTests(unittest.TestCase):

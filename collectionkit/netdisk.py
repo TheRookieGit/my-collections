@@ -8,10 +8,12 @@ from __future__ import annotations
 
 from email.message import Message
 from http.cookiejar import Cookie, CookieJar
+import http.client
 import json
 import re
 import base64
 import shutil
+import socket
 import threading
 import time
 import urllib.error
@@ -28,6 +30,8 @@ LOGIN_SECONDS = 600
 POLL = 2
 MAX_FILES = 2000
 REDIRECTS = {301,302,303,307,308}
+CONNECT_SECONDS = 6
+CHUNK = 64*1024
 
 
 class NetDiskError(Exception):
@@ -45,7 +49,25 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-OPENER = urllib.request.build_opener(NoRedirect)
+class Connection(http.client.HTTPSConnection):
+    """Gives up on one address quickly. A CDN name can resolve to eight addresses that all drop packets, and at the
+    full timeout each that would mean minutes of nothing, while a transfer once connected may legitimately be slow."""
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,**kwargs)
+        self._create_connection = self.open_socket
+
+    def open_socket(self,address,timeout,source):
+        sock = socket.create_connection(address,CONNECT_SECONDS,source)
+        sock.settimeout(timeout)
+        return sock
+
+
+class ConnectQuickly(urllib.request.HTTPSHandler):
+    def https_open(self,request):
+        return self.do_open(Connection,request)
+
+
+OPENER = urllib.request.build_opener(NoRedirect,ConnectQuickly)
 
 
 def fetch(request,timeout,sink=None):
@@ -53,16 +75,17 @@ def fetch(request,timeout,sink=None):
     Tests replace this."""
     try:response = OPENER.open(request,timeout=timeout)
     except urllib.error.HTTPError as exc:response = exc
-    except (urllib.error.URLError,TimeoutError,OSError) as exc:
-        raise Unreachable('连不上网盘，请检查 Windows 电脑的网络后再试。') from exc
+    except (urllib.error.URLError,TimeoutError,OSError,http.client.HTTPException) as exc:
+        raise Unreachable('这次连不上网盘的服务器，会换一个节点自动重试。' if sink is not None else '连不上网盘，请检查 Windows 电脑的网络后再试。') from exc
     with response:
         status = response.status or response.code
         try:
             if sink is not None and status in (200,206):
-                shutil.copyfileobj(response,sink,1024*1024)
+                # Small reads, so a slow connection still shows progress every second or so.
+                shutil.copyfileobj(response,sink,CHUNK)
                 return status,response.headers,b''
             return status,response.headers,response.read()
-        except OSError as exc:
+        except (OSError,http.client.HTTPException) as exc:
             raise Unreachable('下载中断了，请稍后再试。') from exc
 
 
