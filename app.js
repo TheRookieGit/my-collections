@@ -782,7 +782,7 @@ async function recognize({ files = [], imageUrls = [], text = "", link = "" }) {
     const images = await Promise.all([...files, ...remote.filter(Boolean)].map((f) => imageToBase64(f)));
     // 用户上传的截图另存一份压缩版，保存收藏时一起存下来
     const shots = await Promise.all(files.map(async (f) => ({ id: uid(), data: (await imageToBase64(f, ARCHIVE_SIDE, ARCHIVE_QUALITY)).dataUrl })));
-    $("#shotPreview").innerHTML = images.map((im) => `<img src="${im.dataUrl}" alt="图片">`).join("");
+    $("#shotPreview").innerHTML = images.map((im) => zoomThumb(im.dataUrl, "图片")).join("");
     $("#shotState").textContent = "正在用 Claude Haiku 5.5 识别…";
 
     const client = new Anthropic({ apiKey: cfg.apiKey, dangerouslyAllowBrowser: true });
@@ -879,12 +879,98 @@ function readReceipts(files) {
   }));
 }
 
+// ---------- 看大图 ----------
+// 点图放大、再点还原，点图外面关闭；手指捏合、滚轮缩放，放大后拖动。手机和电脑都走 pointer 事件
+const ZOOM_MAX = 8, ZOOM_TAP = 3;
+const zoomThumb = (src, alt) => `<button type="button" class="zoom-thumb" data-zoom aria-label="放大查看${alt}"><img src="${src}" alt="${alt}"></button>`;
+const zoom = { s: 1, x: 0, y: 0, touches: new Map(), moved: false, gap: 0 };
+function zoomPaint() {
+  const stage = $("#zoomStage"), img = $("#zoomImg");
+  const limit = (size, box) => Math.max(0, (size * zoom.s - box) / 2); // 图的边不离开屏幕边
+  const maxX = limit(img.offsetWidth, stage.clientWidth), maxY = limit(img.offsetHeight, stage.clientHeight);
+  zoom.x = Math.min(maxX, Math.max(-maxX, zoom.x));
+  zoom.y = Math.min(maxY, Math.max(-maxY, zoom.y));
+  img.style.transform = `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.s})`;
+  stage.classList.toggle("zoomed", zoom.s > 1);
+}
+// 以屏幕上的 (cx, cy) 为中心缩放，手指下面的内容不跑
+function zoomTo(s, cx, cy) {
+  const r = $("#zoomStage").getBoundingClientRect();
+  const px = cx - r.left - r.width / 2, py = cy - r.top - r.height / 2;
+  const next = Math.min(ZOOM_MAX, Math.max(1, s));
+  zoom.x = next === 1 ? 0 : px - (px - zoom.x) * (next / zoom.s);
+  zoom.y = next === 1 ? 0 : py - (py - zoom.y) * (next / zoom.s);
+  zoom.s = next;
+  zoomPaint();
+}
+function openZoom(src, alt) {
+  Object.assign(zoom, { s: 1, x: 0, y: 0, moved: false, gap: 0 });
+  zoom.touches.clear();
+  const img = $("#zoomImg");
+  img.src = src;
+  img.alt = alt;
+  $("#dlgZoom").showModal();
+  zoomPaint();
+}
+const touchPair = () => {
+  const [a, b] = [...zoom.touches.values()];
+  return { gap: Math.hypot(a.x - b.x, a.y - b.y), x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+};
+{
+  const stage = $("#zoomStage");
+  stage.addEventListener("pointerdown", (e) => {
+    if (!zoom.touches.size) zoom.moved = false;
+    stage.setPointerCapture(e.pointerId);
+    zoom.touches.set(e.pointerId, { x: e.clientX, y: e.clientY, startX: e.clientX, startY: e.clientY });
+    if (zoom.touches.size === 2) { zoom.moved = true; zoom.gap = touchPair().gap; }
+  });
+  stage.addEventListener("pointermove", (e) => {
+    const t = zoom.touches.get(e.pointerId);
+    if (!t) return;
+    const was = zoom.touches.size === 2 ? touchPair() : null;
+    const dx = e.clientX - t.x, dy = e.clientY - t.y;
+    t.x = e.clientX; t.y = e.clientY;
+    if (Math.hypot(t.x - t.startX, t.y - t.startY) > 8) zoom.moved = true;
+    if (was) {
+      const now = touchPair();
+      zoom.x += now.x - was.x; zoom.y += now.y - was.y;
+      zoomTo(zoom.s * (now.gap / zoom.gap), now.x, now.y);
+      zoom.gap = now.gap;
+    } else if (zoom.touches.size === 1 && zoom.s > 1) {
+      zoom.x += dx; zoom.y += dy;
+      zoomPaint();
+    }
+  });
+  const lift = (e) => zoom.touches.delete(e.pointerId);
+  stage.addEventListener("pointerup", lift);
+  stage.addEventListener("pointercancel", lift);
+  stage.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    zoomTo(zoom.s * Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.002)), e.clientX, e.clientY); // ctrlKey：触控板捏合
+  }, { passive: false });
+  // 放在 click 上而不是 pointerup：手机上关得太早，紧跟着的 click 会点到下面的输入框
+  stage.addEventListener("click", (e) => {
+    if (zoom.moved) return;
+    const r = $("#zoomImg").getBoundingClientRect();
+    const onImage = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+    if (zoom.s > 1) zoomTo(1, e.clientX, e.clientY);
+    else if (onImage) zoomTo(ZOOM_TAP, e.clientX, e.clientY);
+    else $("#dlgZoom").close();
+  });
+  $("#dlgShot").addEventListener("click", (e) => {
+    const thumb = e.target.closest("[data-zoom]");
+    if (!thumb) return;
+    const img = thumb.querySelector("img");
+    openZoom(img.src, img.alt);
+  });
+}
+
 const receiptMoney = (r) => (r.total ? `${r.currency ? r.currency + " " : ""}${Number(r.total).toFixed(2)}` : "");
 function receiptCard(p) {
   const n = shotReceipts.indexOf(p);
-  if (!p.ok) return `<div class="receipt-photo" data-rp="${n}"><img src="${p.thumb}" alt="截图"><div class="receipt-body"><p class="warn small">${esc(p.error || p.note)}</p></div></div>`;
+  if (!p.ok) return `<div class="receipt-photo" data-rp="${n}">${zoomThumb(p.thumb, "截图")}<div class="receipt-body"><p class="warn small">${esc(p.error || p.note)}</p></div></div>`;
   return `<div class="receipt-photo" data-rp="${n}">
-    <img src="${p.thumb}" alt="小票">
+    ${zoomThumb(p.thumb, "小票")}
     <div class="receipt-body">
       <div class="row">
         <input type="checkbox" data-rk="check" aria-label="送到 AutoReceipt" ${p._checked ? "checked" : ""}>

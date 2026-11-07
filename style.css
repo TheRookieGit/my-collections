@@ -501,7 +501,8 @@ fieldset > button { align-self: flex-start; }
 .stars-input button.on { color: var(--gold); }
 
 .shot-preview { display: flex; gap: 8px; overflow-x: auto; }
-.shot-preview img { height: 96px; border-radius: 12px; border: 1px solid var(--line); }
+.shot-preview img { display: block; height: 96px; border-radius: 12px; border: 1px solid var(--line); }
+.shot-preview .zoom-thumb { flex: none; border-radius: 12px; }
 .shot-item { border: 1px solid var(--line); border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 8px; margin-top: 10px; background: var(--card); }
 .shot-item .row { align-items: center; }
 .shot-item input[type=checkbox] { width: auto; }
@@ -510,7 +511,10 @@ fieldset > button { align-self: flex-start; }
 .receipt-day { margin-top: 12px; }
 .receipt-day h4 { margin: 0 0 6px; font-size: 13px; font-variant-numeric: tabular-nums; }
 .receipt-photo { display: flex; gap: 12px; border: 1px solid var(--line); border-radius: 16px; padding: 12px; margin-top: 8px; background: var(--card); }
-.receipt-photo > img { width: 64px; height: 96px; object-fit: cover; border-radius: 8px; flex: none; }
+.receipt-photo .zoom-thumb { flex: none; align-self: flex-start; }
+.receipt-photo .zoom-thumb img { display: block; width: 64px; height: 96px; object-fit: cover; }
+.zoom-thumb { padding: 0; border: 0; background: none; border-radius: 8px; cursor: zoom-in; overflow: hidden; }
+.zoom-thumb:hover img { opacity: .85; }
 .receipt-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
 .receipt-body p { margin: 0; }
 .receipt-body .row { align-items: center; flex-wrap: nowrap; }
@@ -529,6 +533,21 @@ input[type=checkbox] { accent-color: var(--ink); width: 16px; height: 16px; }
 .img-view { display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
 .img-view img { display: block; width: 100%; border-radius: 14px; border: 1px solid var(--line); }
 #dlgImg[open] .dlg-body { max-height: calc(100vh - 40px); }
+#dlgZoom {
+  position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; max-width: none; max-height: none; margin: 0;
+  border: 0; border-radius: 0; background: rgba(0,0,0,.92); box-shadow: none; overflow: hidden;
+}
+.zoom-stage { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; touch-action: none; cursor: zoom-out; }
+.zoom-stage.zoomed { cursor: grab; }
+.zoom-stage.zoomed:active { cursor: grabbing; }
+#zoomImg { max-width: 100%; max-height: 100%; cursor: zoom-in; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.zoomed #zoomImg { cursor: inherit; }
+.zoom-close {
+  position: absolute; top: 12px; right: 12px; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%;
+  display: grid; place-items: center; color: #fff; background: rgba(255,255,255,.16);
+}
+.zoom-close:hover { background: rgba(255,255,255,.28); }
+.zoom-close svg { width: 20px; height: 20px; }
 
 .checks { display: flex; flex-wrap: wrap; gap: 8px; }
 dialog label.check {
