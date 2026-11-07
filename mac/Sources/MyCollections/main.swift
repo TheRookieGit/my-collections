@@ -10,7 +10,6 @@ final class Hub: NSObject, NSApplicationDelegate {
         var running: Bool { !NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty }
         var url: URL? { NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) }
     }
-    private static let website = URL(string: "https://therookiegit.github.io/my-collections/")!
     private static let apps = [
         App(bundleID: "com.therookiegit.AutoReceipt", name: "AutoReceipt"),
         App(bundleID: "com.therookiegit.NewsCollections", name: "News Collections"),
@@ -21,12 +20,14 @@ final class Hub: NSObject, NSApplicationDelegate {
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private var menus: [String: MenuHub.Menu] = [:]
     private var waiting: Set<String> = []
+    private let wishlist = WebWindow()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         item.button?.target = self
         item.button?.action = #selector(clicked)
         item.button?.sendAction(on: [.leftMouseDown, .rightMouseDown])
         updateIcon()
+        NSApp.mainMenu = buildMainMenu()
         let center = DistributedNotificationCenter.default()
         center.addObserver(self, selector: #selector(told(_:)), name: MenuHub.tell, object: nil, suspensionBehavior: .deliverImmediately)
         center.postNotificationName(MenuHub.ask, object: nil, userInfo: nil, options: [.deliverImmediately])
@@ -36,6 +37,46 @@ final class Hub: NSObject, NSApplicationDelegate {
             try? SMAppService.mainApp.register()
         }
     }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        wishlist.show()
+        return true
+    }
+
+    /// Only seen while the wishlist window is open. Without an Edit menu ⌘V and friends do nothing in the page. ⌘Q
+    /// closes the window, because quitting would also take away the one menu bar icon.
+    private func buildMainMenu() -> NSMenu {
+        func submenu(_ title: String, _ items: [(String, Selector, String)]) -> NSMenuItem {
+            let menu = NSMenu(title: title)
+            for (name, selector, key) in items { menu.addItem(withTitle: name, action: selector, keyEquivalent: key) }
+            let holder = NSMenuItem()
+            holder.submenu = menu
+            return holder
+        }
+        let main = NSMenu()
+        main.addItem(submenu("我的心愿单", [
+            ("隐藏我的心愿单", #selector(NSApplication.hide(_:)), "h"),
+            ("关闭窗口", #selector(NSWindow.performClose(_:)), "q"),
+        ]))
+        main.addItem(submenu("编辑", [
+            ("撤销", Selector(("undo:")), "z"),
+            ("重做", Selector(("redo:")), "Z"),
+            ("剪切", #selector(NSText.cut(_:)), "x"),
+            ("拷贝", #selector(NSText.copy(_:)), "c"),
+            ("粘贴", #selector(NSText.paste(_:)), "v"),
+            ("全选", #selector(NSText.selectAll(_:)), "a"),
+        ]))
+        let view = submenu("显示", [("刷新", #selector(reloadWishlist), "r")])
+        view.submenu?.items.first?.target = self
+        main.addItem(view)
+        main.addItem(submenu("窗口", [
+            ("最小化", #selector(NSWindow.performMiniaturize(_:)), "m"),
+            ("关闭窗口", #selector(NSWindow.performClose(_:)), "w"),
+        ]))
+        return main
+    }
+
+    @objc private func reloadWishlist() { wishlist.reload() }
 
     @objc private func told(_ note: Notification) {
         guard let id = note.object as? String, let json = note.userInfo?["menu"] as? String,
@@ -76,7 +117,7 @@ final class Hub: NSObject, NSApplicationDelegate {
     private func buildMenu() -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
-        let site = action("打开我的心愿单", #selector(openWebsite))
+        let site = action("打开我的心愿单", #selector(openWishlist))
         site.image = NSApp.applicationIconImage.flatMap(Self.small)
         menu.addItem(site)
         for app in Self.apps {
@@ -128,7 +169,7 @@ final class Hub: NSObject, NSApplicationDelegate {
         return copy
     }
 
-    @objc private func openWebsite() { NSWorkspace.shared.open(Self.website) }
+    @objc private func openWishlist() { wishlist.show() }
 
     /// Launches the app, or brings up its window if it is already running in the background.
     @objc private func openApp(_ sender: NSMenuItem) {

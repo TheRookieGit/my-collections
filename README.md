@@ -6,7 +6,7 @@
 
 **Windows 窗口版**：从 [Releases → 我的心愿单 Windows 版（最新）](https://github.com/TheRookieGit/my-collections/releases/tag/app-latest) 下载 `MyCollections-windows.zip`，解压后双击 **我的心愿单.exe**，心愿单会在一个没有标签页和地址栏的单独窗口里打开，可以固定到任务栏。它用的是 Chrome（没有就用 Edge）平时的配置，所以同步密码、已有的收藏、网盘登录都和浏览器里一样，不用重新填。网页本身总是最新的，这个程序不需要更新。它和书屿、Plexus 一样在系统托盘里有图标：关掉窗口后点托盘图标就能再打开，右键可以设「开机自动启动」或退出。
 
-**Mac 菜单栏**：`mac/scripts/build-app.sh` 编译并装到 `/Applications/ahomemade/MyCollections.app`。一个图标，菜单里分成心愿单（用默认浏览器打开）、AutoReceipt、News Collections、FoodCollection 四段，每段是打开入口和这个应用原来的菜单内容。它运行时三个应用藏起自己的图标，照常在后台同步；退出它，三个图标自动回来。三个应用里的 `MenuHub.swift` 和 `mac/Sources/MyCollections/MenuHub.swift` 是同一份，要一起改。
+**Mac 菜单栏**：`mac/scripts/build-app.sh` 编译并装到 `/Applications/ahomemade/MyCollections.app`。一个图标，菜单里分成心愿单（在单独的窗口里打开，关掉窗口图标还在）、AutoReceipt、News Collections、FoodCollection 四段，每段是打开入口和这个应用原来的菜单内容。它运行时三个应用藏起自己的图标，照常在后台同步；退出它，三个图标自动回来。这个窗口的本地数据和浏览器分开，第一次要填同步密码；AutoReceipt 口令只存在本机，也要再填一次。三个应用里的 `MenuHub.swift` 和 `mac/Sources/MyCollections/MenuHub.swift` 是同一份，要一起改。
 
 ## 功能
 - 9 个分类，每条收藏自动记录收藏时间（可修改）
