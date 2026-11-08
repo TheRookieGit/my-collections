@@ -1090,7 +1090,7 @@ async function uploadReceipts() {
 }
 
 // 解析快捷指令传来的内容：小红书分享文字 + 从笔记网页里匹配出的 "title/desc" 和 "url" 片段
-const XHS_LINK = /https?:\/\/(?:xhslink\.(?:cn|com)|(?:www\.)?xiaohongshu\.com)\/[^\s"，。]+/;
+const XHS_LINK = /https?:\/\/(?:xhslink\.(?:cn|com)|(?:www\.)?xiaohongshu\.com|(?:www\.)?rednote\.com)\/[^\s"，。]+/;
 const JSON_STR = String.raw`"(?:[^"\\]|\\.)*"`;
 const jsonStr = (q) => { try { return JSON.parse(q); } catch { return ""; } };
 
@@ -1103,8 +1103,8 @@ function parseShare(raw) {
   const byId = new Map();
   for (const m of raw.matchAll(new RegExp(`"url":(${JSON_STR})`, "g"))) {
     const u = jsonStr(m[1]).replace(/^http:/, "https:");
-    if (!/xhscdn\.com\//.test(u)) continue;
-    const id = u.split("/").pop().split("!")[0];
+    if (!/(?:xhscdn|rednotecdn)\.com\//.test(u)) continue; // 海外读到的是国际版 rednote 的图
+    const id = u.split("?")[0].split("/").pop().split("!")[0];
     if (!byId.has(id) || rank(u) > rank(byId.get(id))) byId.set(id, u);
   }
   const imageUrls = [...byId.values()].slice(0, MAX_NOTE_IMAGES);
