@@ -319,6 +319,9 @@ function parts(i) {
     return ext(url, `${esc(hostOf(url))}${i.links.length > 1 ? ` ${n + 1}` : ""}`) + (code && !url.includes(code) ? ` <span class="muted">提取码 ${esc(code)}</span>` : "");
   }).join("　")) : "";
   const link = i.link ? row("链接", ext(i.link, esc(hostOf(i.link)))) : "";
+  // 游戏的商店页 / 官网另起一行：「链接」放了小红书笔记时也看得到
+  const storeUrl = i.externalIds?.steamAppId ? `https://store.steampowered.com/app/${Number(i.externalIds.steamAppId)}/` : /^https?:\/\//i.test(i.extra?.officialUrl || "") ? i.extra.officialUrl : "";
+  const store = storeUrl && storeUrl !== i.link ? row(i.externalIds?.steamAppId ? "Steam" : "官网", ext(storeUrl, i.externalIds?.steamAppId ? "Steam 商店页" : esc(hostOf(storeUrl)))) : "";
   const archive = isArchive(i.category);
   const owned = ownedRows(i).map((f) => `
     <div class="owned"><span class="owned-text">${archive ? "已保存" : "已拥有"} · ${esc(APPS[f.app]?.name || f.app)}${f.title ? `：${esc(f.title)}` : ""} · ${fmtTime(f.ownedAt).slice(0, 10)}</span>
@@ -351,7 +354,7 @@ function parts(i) {
       </div>
     </div>`;
   const doneBtn = archive || (doneHidden(i.category) && !i.done) ? "" : `<button data-act="done" class="btn-done ${i.done ? "is-done" : ""}">${i.done ? "撤回" : "已实现"}</button>`;
-  return { c, cover: cover + stamp, metas: extras + kind + aliases + downloads + link, owned, send, doneBtn };
+  return { c, cover: cover + stamp, metas: extras + kind + aliases + downloads + link + store, owned, send, doneBtn };
 }
 
 // 卡片只放要点：备注最多三行，点卡片打开详情看全部
@@ -557,7 +560,8 @@ form.addEventListener("submit", (e) => {
     note: form.note.value.trim(),
     rating: editRating,
     createdAt: form.createdAt.value ? new Date(form.createdAt.value).toISOString() : now(),
-    extra: collectExtra(),
+    // Steamless 推来的官网不在表单里，编辑时留着
+    extra: { ...(base.extra?.officialUrl ? { officialUrl: base.extra.officialUrl } : {}), ...collectExtra() },
     ...(cat === "novel" ? { kind: form.kind.value } : {}),
     links: CATS[cat]?.links ? splitLinks(form.links.value) : [],
     aliases: hasAliases(cat) ? splitList(form.aliases.value, /[,，、\n]/) : [],
