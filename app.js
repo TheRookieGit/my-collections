@@ -1141,8 +1141,11 @@ async function recognizeXhs(shareText) {
     if (error || data?.error || !data?.found) {
       console.warn("xhs-note", error || data);
       const status = error?.context?.status;
-      const why = status === 404 ? "云函数 xhs-note 还没部署"
-        : status === 401 ? (await error.context.json().catch(() => ({}))).error || "云函数拒绝访问（检查是否关闭了 Verify JWT）"
+      // 非 2xx 时 data 为空，云函数写的原因在响应体里，要自己读出来
+      const body = error?.context?.json ? await error.context.json().catch(() => ({})) : {};
+      const why = status === 404 && !body.error ? "云函数 xhs-note 还没部署"
+        : status === 401 ? body.error || "云函数拒绝访问（检查是否关闭了 Verify JWT）"
+        : body.error ? `${body.error}${status ? `，${status}` : ""}`
         : data?.error || (data && !data.found ? "小红书没返回正文（可能要求登录）" : error?.message || "未知错误");
       toast(`没读到笔记正文（${why}），只按分享文字识别`);
     } else raw = data.raw;
