@@ -51,8 +51,25 @@ final class MenuHubClient: NSObject {
         tell()
     }
 
+    private var hubRunning: Bool { !NSRunningApplication.runningApplications(withBundleIdentifier: MenuHub.bundleID).isEmpty }
+    private var showLater: Task<Void, Never>?
+
+    /// Hides at once, but shows only when the hub is still missing a moment later: while any app launches or quits, which
+    /// is when this runs, the lookup can come back empty for an instant and the icon would flash up.
     private func followHub() {
-        item.isVisible = NSRunningApplication.runningApplications(withBundleIdentifier: MenuHub.bundleID).isEmpty
+        if hubRunning {
+            showLater?.cancel()
+            showLater = nil
+            item.isVisible = false
+            return
+        }
+        guard !item.isVisible, showLater == nil else { return }
+        showLater = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(1.5))
+            guard let self, !Task.isCancelled else { return }
+            self.showLater = nil
+            if !self.hubRunning { self.item.isVisible = true }
+        }
     }
 
     @objc private func asked() {
